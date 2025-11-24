@@ -29,6 +29,14 @@ router.get('/search', menuController.searchMenus);
  */
 router.get('/:id', menuController.getMenuDetail);
 
+/**
+ * @route GET /api/menus/slug/:slug
+ * @description Ambil detail menu berdasarkan slug (friendly URL)
+ * @access Public
+ */
+router.get('/slug/:slug', menuController.getMenuBySlug);
+
+
 
 // =================================================================
 // RUTE TERPROTEKSI (Perlu token)

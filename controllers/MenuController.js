@@ -52,4 +52,19 @@ const getMenuDetail = async (req, res) => {
     }
 };
 
-module.exports = { getFeatured, searchMenus, getMenuDetail };
+// 4. Controller untuk mendapatkan menu berdasarkan slug (frontend menggunakan slug)
+const getMenuBySlug = async (req, res) => {
+    const slug = req.params.slug;
+    try {
+        const menu = await MenuModel.getMenuBySlug(slug);
+        if (!menu) return res.status(404).json({ message: 'Menu tidak ditemukan' });
+        // Map data jika perlu
+        menu.diet_claims = JSON.parse(menu.diet_claims || '[]');
+        res.status(200).json(menu);
+    } catch (error) {
+        console.error('Error saat mengambil menu by slug:', error);
+        res.status(500).json({ message: 'Gagal memuat detail menu.' });
+    }
+};
+
+module.exports = { getFeatured, searchMenus, getMenuDetail, getMenuBySlug };
