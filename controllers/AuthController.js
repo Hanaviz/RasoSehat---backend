@@ -65,4 +65,26 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = { register, login };
+// Fungsi 3: Verifikasi token dan kembalikan data user
+const verify = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization || '';
+        const token = authHeader.replace(/^(Bearer )/i, '');
+        if (!token) {
+            return res.status(401).json({ message: 'Token tidak ditemukan.' });
+        }
+
+        const decoded = jwt.verify(token, SECRET_KEY);
+        // Kembalikan payload minimal sebagai user
+        return res.status(200).json({ user: { id: decoded.id, name: decoded.name, role: decoded.role } });
+
+    } catch (error) {
+        console.error('Error saat memverifikasi token:', error);
+        if (error && (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError')) {
+            return res.status(401).json({ message: 'Token tidak valid.' });
+        }
+        return res.status(500).json({ message: 'Gagal memverifikasi token.' });
+    }
+};
+
+module.exports = { register, login, verify };

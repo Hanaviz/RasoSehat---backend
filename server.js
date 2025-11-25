@@ -7,7 +7,25 @@ require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({ origin: 'http://localhost:5173' })); 
+// Enable CORS for local development. Accept requests from localhost on any port
+// or fallback to the value in env if provided. This avoids CORS failures when
+// Vite uses a different port (5173/5174/etc.). In production this should be
+// tightened to the proper origin or handled by a reverse proxy.
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true); // allow server-to-server / curl requests
+        try {
+            const url = new URL(origin);
+            if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return callback(null, true);
+        } catch (e) {
+            // ignore parse errors
+        }
+        // Allow explicitly configured origin via env var if set
+        if (process.env.CORS_ORIGIN && origin === process.env.CORS_ORIGIN) return callback(null, true);
+        return callback(new Error('Not allowed by CORS'));
+    }
+};
+app.use(cors(corsOptions)); 
 app.use(bodyParser.json());
 
 const categoryRoutes = require('./routes/categoryRoutes');
