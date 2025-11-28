@@ -22,7 +22,7 @@ pool.getConnection()
     })
     .catch(err => {
         console.error('❌ Database connection failed:', err.message);
-        process.exit(1);
+        console.error('The server will continue starting, but DB queries will fail until the connection is available.');
     });
 
 module.exports = pool;

@@ -35,7 +35,7 @@ const updateStep2 = async (req, res) => {
     // Extract fields (supporting new columns)
     const {
       deskripsi, latitude, longitude, no_telepon, jenis_usaha, mapsLatLong,
-      owner_name, phone_admin, operating_hours, sales_channels, social_media,
+      owner_name, owner_email, phone_admin, operating_hours, sales_channels, social_media,
       store_category, commitment_checked, health_focus, dominant_cooking_method,
       dominant_fat, slug
     } = req.body || {};
@@ -71,6 +71,7 @@ const updateStep2 = async (req, res) => {
       no_telepon,
       jenis_usaha: jenisUsahaNormalized,
       owner_name,
+      owner_email,
       phone_admin,
       operating_hours,
       sales_channels,

@@ -10,13 +10,13 @@ class RestaurantModel {
 
   static async updateStep2(id, {
     deskripsi, latitude, longitude, no_telepon, jenis_usaha,
-    owner_name, phone_admin, operating_hours, sales_channels, social_media,
+    owner_name, owner_email, phone_admin, operating_hours, sales_channels, social_media,
     store_category, commitment_checked, health_focus, dominant_cooking_method,
     dominant_fat, maps_latlong, slug
   }) {
     const sql = `UPDATE restorans SET
       deskripsi = ?, latitude = ?, longitude = ?, no_telepon = ?, jenis_usaha = ?,
-      owner_name = ?, phone_admin = ?, operating_hours = ?, sales_channels = ?,
+      owner_name = ?, owner_email = ?, phone_admin = ?, operating_hours = ?, sales_channels = ?,
       social_media = ?, store_category = ?, commitment_checked = ?, health_focus = ?,
       dominant_cooking_method = ?, dominant_fat = ?, maps_latlong = ?, slug = ?,
       updated_at = NOW()
@@ -29,6 +29,7 @@ class RestaurantModel {
       no_telepon || null,
       jenis_usaha || 'perorangan',
       owner_name || null,
+      owner_email || null,
       phone_admin || null,
       operating_hours || null,
       sales_channels || null,
