@@ -15,9 +15,9 @@ router.put('/:id/step-2', verifyToken, verifyPenjual, RestaurantController.updat
 
 // Step 3 file uploads: accept single files for each field
 router.put('/:id/step-3', verifyToken, verifyPenjual, upload.fields([
-  { name: 'foto_ktp', maxCount: 1 },
-  { name: 'npwp', maxCount: 1 },
-  { name: 'dokumen_usaha', maxCount: 1 }
+  { name: 'foto_ktp', maxCount: 10 },
+  { name: 'npwp', maxCount: 10 },
+  { name: 'dokumen_usaha', maxCount: 10 }
 ]), RestaurantController.updateStep3);
 
 router.put('/:id/submit', verifyToken, verifyPenjual, RestaurantController.submitFinal);
