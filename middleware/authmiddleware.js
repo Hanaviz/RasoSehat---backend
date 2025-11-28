@@ -12,15 +12,28 @@ const verifyToken = (req, res, next) => {
     const token = authHeader.split(' ')[1]; // Ambil token saja (setelah 'Bearer ')
 
     try {
+        if (!SECRET_KEY) {
+            console.error('SECRET_KEY is not set in environment. JWT verification cannot proceed.');
+            return res.status(500).json({ message: 'Server misconfiguration: secret key not set.' });
+        }
+
         // Verifikasi token menggunakan secret key
         const decoded = jwt.verify(token, SECRET_KEY);
-        
+
         // Simpan data user (id dan role) di objek request agar bisa diakses controller
-        req.user = decoded; 
-        
+        req.user = decoded;
+
         next(); // Lanjutkan ke controller
     } catch (error) {
-        // Jika token tidak valid (kadaluarsa/salah)
+        // Log error details to help debugging (temporary)
+        console.error('JWT verify error:', error && error.name, error && error.message);
+        // Provide specific status for expired tokens
+        if (error && error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Token kadaluarsa.' });
+        }
+        if (error && error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ message: 'Token tidak valid.' });
+        }
         return res.status(403).json({ message: 'Token tidak valid atau kadaluarsa.' });
     }
 };

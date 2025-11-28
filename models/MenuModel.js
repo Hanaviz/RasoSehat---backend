@@ -1,5 +1,14 @@
 const db = require('../config/db.js');
 
+const slugify = (text) => {
+    return text.toString().toLowerCase()
+        .normalize('NFKD')
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9\-]/g, '')
+        .replace(/\-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+};
+
 const MenuModel = {
     // Fungsi untuk Mendapatkan Menu Unggulan (Home Page)
     getFeaturedMenus: async (limit = 10) => {
@@ -114,5 +123,67 @@ const MenuModel = {
         return rowsExact[0];
     }
 };
+
+// Create new menu with unique slug
+MenuModel.create = async (data) => {
+    // data should contain: restoran_id, kategori_id, nama_menu, deskripsi, bahan_baku,
+    // metode_masak, diet_claims (stringified JSON), kalori, protein, gula, lemak, serat,
+    // lemak_jenuh, harga, foto
+
+    // Generate base slug
+    let baseSlug = slugify(data.nama_menu || 'menu');
+    let slug = baseSlug;
+    let suffix = 0;
+
+    // Ensure uniqueness
+    while (true) {
+        const [rows] = await db.execute('SELECT id FROM menu_makanan WHERE slug = ? LIMIT 1', [slug]);
+        if (!rows || rows.length === 0) break;
+        suffix += 1;
+        slug = `${baseSlug}-${suffix}`;
+    }
+
+    const sql = `INSERT INTO menu_makanan (
+        restoran_id, kategori_id, nama_menu, deskripsi, bahan_baku, metode_masak,
+        diet_claims, kalori, protein, gula, lemak, serat, lemak_jenuh, harga, foto, status_verifikasi, created_at, updated_at, slug
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW(), ?)`;
+
+    const params = [
+        data.restoran_id || null,
+        data.kategori_id || null,
+        data.nama_menu || null,
+        data.deskripsi || null,
+        data.bahan_baku || null,
+        data.metode_masak || null,
+        data.diet_claims || '[]',
+        data.kalori || 0,
+        data.protein || 0,
+        data.gula || 0,
+        data.lemak || 0,
+        data.serat || 0,
+        data.lemak_jenuh || 0,
+        data.harga || 0,
+        data.foto || null,
+        slug
+    ];
+
+    const [result] = await db.execute(sql, params);
+    const insertId = result.insertId;
+
+    const [rows] = await db.execute(`
+        SELECT m.*, r.nama_restoran, r.alamat FROM menu_makanan m
+        JOIN restorans r ON m.restoran_id = r.id WHERE m.id = ? LIMIT 1
+    `, [insertId]);
+
+    return rows[0] || null;
+};
+
+MenuModel.findAll = async () => {
+    const q = `SELECT m.*, r.nama_restoran, r.alamat FROM menu_makanan m JOIN restorans r ON m.restoran_id = r.id ORDER BY m.updated_at DESC`;
+    const [rows] = await db.execute(q);
+    return rows;
+};
+
+module.exports = MenuModel;
 
 module.exports = MenuModel;
