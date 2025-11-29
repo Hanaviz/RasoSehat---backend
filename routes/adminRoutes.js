@@ -8,8 +8,9 @@ const adminMiddleware = require('../middleware/adminmiddleware');
 router.get('/pending/restaurants', verifyToken, adminMiddleware, adminController.getPendingRestaurants);
 router.get('/pending/menus', verifyToken, adminMiddleware, adminController.getPendingMenus);
 router.get('/restaurant/:id', verifyToken, adminMiddleware, adminController.getRestaurantById);
-
 router.put('/verify/restaurant/:id', verifyToken, adminMiddleware, adminController.verifyRestaurant);
+// New PATCH endpoint for admin verification (required flow)
+router.patch('/restaurants/:id/verify', verifyToken, adminMiddleware, adminController.patchVerifyRestaurant);
 router.put('/verify/menu/:id', verifyToken, adminMiddleware, adminController.verifyMenu);
 
 module.exports = router;

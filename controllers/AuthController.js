@@ -7,7 +7,7 @@ const SECRET_KEY = process.env.SECRET_KEY; // Diambil dari .env
 
 // Fungsi 1: Register User Baru
 const register = async (req, res) => {
-    const { name, email, password, birth_date, gender, phone } = req.body;
+    const { name, email, password, birth_date, gender, phone, role } = req.body;
     try {
         // Cek apakah user sudah ada
         const existingUser = await UserModel.findByEmail(email);
@@ -19,12 +19,14 @@ const register = async (req, res) => {
         const salt = await bcrypt.genSalt(10);
         const password_hash = await bcrypt.hash(password, salt);
 
-        // Buat user baru (default role: pembeli)
+        // Buat user baru (default role: pembeli). Accept 'penjual' when explicitly requested.
         const extras = {};
+        // sanitize role input: only allow 'penjual' to become penjual, otherwise default to 'pembeli'
+        const normalizedRole = (typeof role === 'string' && role.toLowerCase() === 'penjual') ? 'penjual' : 'pembeli';
         if (birth_date) extras.birth_date = birth_date;
         if (gender) extras.gender = gender;
         if (phone) extras.phone = phone;
-        await UserModel.create(name, email, password_hash, 'pembeli', extras);
+        await UserModel.create(name, email, password_hash, normalizedRole, extras);
         
         res.status(201).json({ message: 'Registrasi berhasil! Silakan login.' });
 

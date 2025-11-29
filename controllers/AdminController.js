@@ -1,4 +1,6 @@
 const db = require('../config/db');
+const { sendStoreVerificationEmail } = require('../utils/emailService');
+const { sendStoreVerificationEmailTo } = require('../utils/emailService');
 
 // Helper to map incoming status values to DB values
 const mapStatus = (status) => {
@@ -115,7 +117,7 @@ const getPendingMenus = async (req, res) => {
 
 const verifyRestaurant = async (req, res) => {
     const { id } = req.params;
-    const { status } = req.body; // expected: 'approved' | 'rejected' (or Indonesian equivalents)
+    const { status, note } = req.body; // expected: 'approved' | 'rejected' (or Indonesian equivalents)
 
     const dbStatus = mapStatus(status);
     if (!dbStatus) {
@@ -123,21 +125,71 @@ const verifyRestaurant = async (req, res) => {
     }
 
     try {
-        const [result] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+        // Attempt to update restorans; include admin_note if column exists (non-fatal otherwise)
+        try {
+            const [result] = await db.execute('UPDATE restorans SET status_verifikasi = ?, admin_note = ?, verified_at = NOW() WHERE id = ?', [dbStatus, note || null, id]);
+            if (result.affectedRows === 0) {
+                // fallback: maybe no admin_note column; try simpler update
+                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
+                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+            }
+        } catch (e) {
+            // Try fallback update if admin_note/verified_at do not exist
+            try {
+                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
+                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+            } catch (e2) {
+                console.error('verifyRestaurant update fatal error', e2);
+                return res.status(500).json({ message: 'Gagal memperbarui status restoran.' });
+            }
+        }
 
         // Insert a verifikasi record for audit trail; non-fatal if table/columns differ
         try {
             const adminId = req.user && req.user.id ? req.user.id : null;
             await db.execute('INSERT INTO verifikasi (target_type, target_id, user_id, admin_id, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-                ['restoran', id, null, adminId, dbStatus, `Update performed by admin ${adminId}`]
+                ['restoran', id, null, adminId, dbStatus, note || null]
             );
         } catch (e) {
             console.warn('Could not insert verifikasi log for restaurant (non-fatal):', e.message || e);
         }
 
-        const [rows] = await db.execute('SELECT id, user_id, nama_restoran, status_verifikasi FROM restorans WHERE id = ?', [id]);
-        return res.status(200).json({ message: 'Status restoran diperbarui.', restaurant: rows[0] });
+        // Fetch restaurant to include in response and to send email
+        const [rows] = await db.execute('SELECT * FROM restorans WHERE id = ?', [id]);
+        const restaurant = rows && rows[0] ? rows[0] : null;
+
+        // Send notification email to owner (best-effort)
+        try {
+            const ownerEmail = restaurant && (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) ? (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) : null;
+            console.log('[verifyRestaurant] will notify owner:', ownerEmail, 'status:', dbStatus, 'notePresent:', !!note);
+            if (ownerEmail) {
+                    // Insert internal notification (preferred) and attempt email as best-effort
+                    try {
+                        // Prefer explicit owner id from restaurant row when available
+                        const ownerIdFromRow = restaurant && (restaurant.user_id || restaurant.owner_user_id) ? (restaurant.user_id || restaurant.owner_user_id) : null;
+                        let ownerId = ownerIdFromRow;
+                        if (!ownerId && ownerEmail) {
+                            const [urows] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
+                            ownerId = (urows && urows[0] && urows[0].id) ? urows[0].id : null;
+                        }
+                        const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
+                        const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
+                        const payload = JSON.stringify({ restaurant_id: restaurant.id, status: dbStatus, note: note || null });
+                        await db.execute('INSERT INTO notifications (user_id, recipient_email, `type`, title, message, data, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())', [ownerId, ownerEmail, dbStatus === 'disetujui' ? 'success' : 'warning', title, message, payload]);
+                    } catch (notifErr) {
+                        console.warn('[verifyRestaurant] could not insert notification (non-fatal):', notifErr && notifErr.message ? notifErr.message : notifErr);
+                    }
+                    // Try sending email as optional fallback
+                    await sendStoreVerificationEmail(restaurant, ownerEmail, dbStatus, note || '');
+                    console.log('[verifyRestaurant] email send attempted to', ownerEmail);
+            } else {
+                console.warn('[verifyRestaurant] owner email not found in restaurant row, skipping email');
+            }
+        } catch (emailErr) {
+            console.error('[verifyRestaurant] failed to send email (non-fatal):', emailErr && emailErr.message ? emailErr.message : emailErr);
+        }
+
+        return res.status(200).json({ message: 'Status restoran diperbarui.', restaurant });
     } catch (err) {
         console.error('verifyRestaurant error', err);
         return res.status(500).json({ message: 'Gagal memperbarui status restoran.' });
@@ -172,6 +224,87 @@ const verifyMenu = async (req, res) => {
     } catch (err) {
         console.error('verifyMenu error', err);
         return res.status(500).json({ message: 'Gagal memperbarui status menu.' });
+    }
+};
+
+// New: PATCH /admin/restaurants/:id/verify
+// Body: { status: 'approved' | 'rejected', note: string }
+const patchVerifyRestaurant = async (req, res) => {
+    const { id } = req.params;
+    const { status, note } = req.body || {};
+
+    const dbStatus = mapStatus(status);
+    if (!dbStatus) return res.status(400).json({ message: 'Status tidak valid. Gunakan "approved" atau "rejected".' });
+
+    try {
+        // Update restorans with admin note and verified timestamp (best-effort)
+        try {
+            const [r] = await db.execute('UPDATE restorans SET status_verifikasi = ?, admin_note = ?, verified_at = NOW() WHERE id = ?', [dbStatus, note || null, id]);
+            if (r.affectedRows === 0) {
+                // fallback to simple update
+                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
+                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+            }
+        } catch (e) {
+            // try fallback
+            try {
+                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
+                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+            } catch (ee) {
+                console.error('patchVerifyRestaurant update failed', ee);
+                return res.status(500).json({ message: 'Gagal memperbarui status restoran.' });
+            }
+        }
+
+        // Audit log (non-fatal)
+        try {
+            const adminId = req.user && req.user.id ? req.user.id : null;
+            await db.execute('INSERT INTO verifikasi (target_type, target_id, user_id, admin_id, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
+                ['restoran', id, null, adminId, dbStatus, note || null]
+            );
+        } catch (e) {
+            console.warn('patchVerifyRestaurant: could not insert verifikasi audit (non-fatal):', e && e.message ? e.message : e);
+        }
+
+        // Fetch restaurant row to include in response
+        const [rows] = await db.execute('SELECT * FROM restorans WHERE id = ?', [id]);
+        const restaurant = rows && rows[0] ? rows[0] : null;
+
+        // Send email by address (best-effort)
+        try {
+            const ownerEmail = restaurant && (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) ? (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) : null;
+            console.log('[patchVerifyRestaurant] notify owner:', ownerEmail, 'status:', dbStatus);
+            if (ownerEmail) {
+                // Insert internal notification for owner
+                try {
+                    // Prefer explicit owner id from restaurant row when available
+                    const ownerIdFromRow = restaurant && (restaurant.user_id || restaurant.owner_user_id) ? (restaurant.user_id || restaurant.owner_user_id) : null;
+                    let ownerId = ownerIdFromRow;
+                    if (!ownerId && ownerEmail) {
+                        const [urows] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
+                        ownerId = (urows && urows[0] && urows[0].id) ? urows[0].id : null;
+                    }
+                    const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
+                    const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
+                    const payload = JSON.stringify({ restaurant_id: restaurant.id, status: dbStatus, note: note || null });
+                    await db.execute('INSERT INTO notifications (user_id, recipient_email, `type`, title, message, data, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())', [ownerId, ownerEmail, dbStatus === 'disetujui' ? 'success' : 'warning', title, message, payload]);
+                } catch (notifErr) {
+                    console.warn('[patchVerifyRestaurant] could not insert notification (non-fatal):', notifErr && notifErr.message ? notifErr.message : notifErr);
+                }
+                // convenience wrapper: sendStoreVerificationEmailTo(email, status, note, restaurantId)
+                await sendStoreVerificationEmailTo(ownerEmail, dbStatus, note || '', restaurant && restaurant.id);
+                console.log('[patchVerifyRestaurant] email attempted to', ownerEmail);
+            } else {
+                console.warn('[patchVerifyRestaurant] owner email not found, skipping email');
+            }
+        } catch (emailErr) {
+            console.error('[patchVerifyRestaurant] email send failed (non-fatal):', emailErr && emailErr.message ? emailErr.message : emailErr);
+        }
+
+        return res.status(200).json({ message: 'Status restoran diperbarui.', restaurant });
+    } catch (err) {
+        console.error('patchVerifyRestaurant error', err);
+        return res.status(500).json({ message: 'Gagal memperbarui status restoran.' });
     }
 };
 
@@ -255,5 +388,6 @@ module.exports = {
     verifyRestaurant,
     verifyMenu,
     getRestaurantById,
+    patchVerifyRestaurant,
 };
 

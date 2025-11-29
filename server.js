@@ -31,6 +31,7 @@ app.use(bodyParser.json());
 const categoryRoutes = require('./routes/categoryRoutes');
 const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const path = require('path');
 const restaurantRoutes = require('./routes/restaurantRoutes');
@@ -38,6 +39,7 @@ const restaurantRoutes = require('./routes/restaurantRoutes');
 app.use('/api/categories', categoryRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/menus', menuRoutes); 
 // Serve uploaded files (restaurant uploads)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
