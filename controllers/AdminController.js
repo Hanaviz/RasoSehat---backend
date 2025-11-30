@@ -99,6 +99,7 @@ const getPendingRestaurants = async (req, res) => {
 };
 
 const RestaurantModel = require('../models/RestaurantModel');
+const NotificationModel = require('../models/NotificationModel');
 
 const getPendingMenus = async (req, res) => {
     try {
@@ -174,8 +175,8 @@ const verifyRestaurant = async (req, res) => {
                         }
                         const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
                         const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
-                        const payload = JSON.stringify({ restaurant_id: restaurant.id, status: dbStatus, note: note || null });
-                        await db.execute('INSERT INTO notifications (user_id, recipient_email, `type`, title, message, data, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())', [ownerId, ownerEmail, dbStatus === 'disetujui' ? 'success' : 'warning', title, message, payload]);
+                        const payload = { restaurant_id: restaurant.id, status: dbStatus, note: note || null };
+                        await NotificationModel.createNotification({ user_id: ownerId, recipient_email: ownerEmail, type: dbStatus === 'disetujui' ? 'success' : 'warning', title, message, data: payload });
                     } catch (notifErr) {
                         console.warn('[verifyRestaurant] could not insert notification (non-fatal):', notifErr && notifErr.message ? notifErr.message : notifErr);
                     }
@@ -276,21 +277,21 @@ const patchVerifyRestaurant = async (req, res) => {
             console.log('[patchVerifyRestaurant] notify owner:', ownerEmail, 'status:', dbStatus);
             if (ownerEmail) {
                 // Insert internal notification for owner
-                try {
-                    // Prefer explicit owner id from restaurant row when available
-                    const ownerIdFromRow = restaurant && (restaurant.user_id || restaurant.owner_user_id) ? (restaurant.user_id || restaurant.owner_user_id) : null;
-                    let ownerId = ownerIdFromRow;
-                    if (!ownerId && ownerEmail) {
-                        const [urows] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
-                        ownerId = (urows && urows[0] && urows[0].id) ? urows[0].id : null;
+                    try {
+                        // Prefer explicit owner id from restaurant row when available
+                        const ownerIdFromRow = restaurant && (restaurant.user_id || restaurant.owner_user_id) ? (restaurant.user_id || restaurant.owner_user_id) : null;
+                        let ownerId = ownerIdFromRow;
+                        if (!ownerId && ownerEmail) {
+                            const [urows] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
+                            ownerId = (urows && urows[0] && urows[0].id) ? urows[0].id : null;
+                        }
+                        const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
+                        const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
+                        const payload = { restaurant_id: restaurant.id, status: dbStatus, note: note || null };
+                        await NotificationModel.createNotification({ user_id: ownerId, recipient_email: ownerEmail, type: dbStatus === 'disetujui' ? 'success' : 'warning', title, message, data: payload });
+                    } catch (notifErr) {
+                        console.warn('[patchVerifyRestaurant] could not insert notification (non-fatal):', notifErr && notifErr.message ? notifErr.message : notifErr);
                     }
-                    const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
-                    const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
-                    const payload = JSON.stringify({ restaurant_id: restaurant.id, status: dbStatus, note: note || null });
-                    await db.execute('INSERT INTO notifications (user_id, recipient_email, `type`, title, message, data, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())', [ownerId, ownerEmail, dbStatus === 'disetujui' ? 'success' : 'warning', title, message, payload]);
-                } catch (notifErr) {
-                    console.warn('[patchVerifyRestaurant] could not insert notification (non-fatal):', notifErr && notifErr.message ? notifErr.message : notifErr);
-                }
                 // convenience wrapper: sendStoreVerificationEmailTo(email, status, note, restaurantId)
                 await sendStoreVerificationEmailTo(ownerEmail, dbStatus, note || '', restaurant && restaurant.id);
                 console.log('[patchVerifyRestaurant] email attempted to', ownerEmail);
