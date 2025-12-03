@@ -60,6 +60,35 @@ const MenuModel = {
         const [rows] = await db.execute(baseQuery, params);
         return rows;
     },
+    // Fungsi untuk mendapatkan semua menu (list) dengan join kategori dan restoran
+    findAll: async () => {
+        const q = `
+            SELECT
+                m.id, m.restoran_id, m.kategori_id, m.nama_menu, m.deskripsi,
+                m.harga, m.foto, m.slug, m.status_verifikasi, m.diet_claims,
+                m.kalori, m.protein, m.gula, m.lemak, m.serat, m.lemak_jenuh,
+                k.nama_kategori, r.nama_restoran, r.alamat
+            FROM menu_makanan m
+            LEFT JOIN kategori_makanan k ON m.kategori_id = k.id
+            LEFT JOIN restorans r ON m.restoran_id = r.id
+            ORDER BY m.updated_at DESC
+        `;
+        const [rows] = await db.execute(q);
+        // parse diet_claims safely for each row
+        return rows.map(r => {
+            let claims = [];
+            try {
+                claims = r.diet_claims ? JSON.parse(r.diet_claims) : [];
+            } catch (e) {
+                try {
+                    claims = String(r.diet_claims).split(',').map(s => s.trim()).filter(Boolean);
+                } catch (e2) {
+                    claims = [];
+                }
+            }
+            return { ...r, diet_claims: claims };
+        });
+    },
     
     // Fungsi untuk Detail Menu
     getMenuDetail: async (id) => {
@@ -178,10 +207,25 @@ MenuModel.create = async (data) => {
     return rows[0] || null;
 };
 
-MenuModel.findAll = async () => {
-    const q = `SELECT m.*, r.nama_restoran, r.alamat FROM menu_makanan m JOIN restorans r ON m.restoran_id = r.id ORDER BY m.updated_at DESC`;
-    const [rows] = await db.execute(q);
-    return rows;
+MenuModel.findBySlug = async (slug) => {
+    return MenuModel.getMenuBySlug(slug);
+};
+
+MenuModel.findById = async (id) => {
+    const query = `
+        SELECT 
+            m.*, r.nama_restoran, r.alamat, r.no_telepon,
+            r.latitude, r.longitude
+        FROM menu_makanan m
+        JOIN restorans r ON m.restoran_id = r.id
+        WHERE m.id = ? AND m.status_verifikasi = 'disetujui'
+    `;
+    const [rows] = await db.execute(query, [id]);
+    return rows[0];
+};
+
+MenuModel.createMenu = async (data) => {
+    return MenuModel.create(data);
 };
 
 module.exports = MenuModel;

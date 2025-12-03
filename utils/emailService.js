@@ -215,7 +215,7 @@ async function sendStoreVerificationEmail(restaurant, ownerEmail, status, note) 
   const normalizedStatus = String(status || '').toLowerCase();
   const ownerName = (restaurant && (restaurant.owner_name || restaurant.owner || restaurant.ownerName)) || '';
   const restaurantName = (restaurant && (restaurant.nama_restoran || restaurant.name)) || '';
-  const actionLink = `${FRONTEND_URL.replace(/\/$/, '')}/store-signup?restaurantId=${encodeURIComponent(restaurant.id)}`;
+  const actionLink = `${FRONTEND_URL.replace(/\/$/, '')}/register-store?restaurantId=${encodeURIComponent(restaurant.id)}`;
   const supportEmail = process.env.SUPPORT_EMAIL || 'support@rasosehat.local';
 
   let subject = '';

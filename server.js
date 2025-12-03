@@ -35,6 +35,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const menuRoutes = require('./routes/menuRoutes');
 const path = require('path');
 const restaurantRoutes = require('./routes/restaurantRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 app.use('/api/categories', categoryRoutes);
 app.use('/api/auth', authRoutes);
@@ -45,11 +46,19 @@ app.use('/api/menus', menuRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Mount restaurants API
 app.use('/api/restaurants', restaurantRoutes);
+app.use('/api/ulasan', reviewRoutes);
 
 app.get('/', (req, res) => {
     res.send('RasoSehat Backend API is running!');
 });
 
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+// Only start listening when not running tests. This allows test suites to import
+// the Express `app` without binding the server to a port (supertest will use
+// the app directly). When running `NODE_ENV=test` we skip listening.
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, () => {
+        console.log(`Server is running on http://localhost:${PORT}`);
+    });
+}
+
+module.exports = app;

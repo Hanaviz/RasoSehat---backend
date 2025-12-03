@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const menuController = require('../controllers/MenuController');
-const { verifyToken, verifyPenjual } = require('../middleware/authmiddleware'); 
+const { verifyToken } = require('../middleware/authmiddleware'); 
 const uploadMenu = require('../middleware/uploadMenuMiddleware');
 // Note: Middleware role seperti verifyPenjual bisa ditambahkan nanti
 
@@ -56,7 +56,7 @@ router.get('/', menuController.list);
  * @access Protected
  */
 // Protected: create menu (upload foto)
-router.post('/', verifyToken, verifyPenjual, uploadMenu.single('foto'), menuController.createMenu);
+router.post('/', verifyToken, uploadMenu.single('foto'), menuController.createMenu);
 
 
 module.exports = router;

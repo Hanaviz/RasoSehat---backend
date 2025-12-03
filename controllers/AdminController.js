@@ -116,6 +116,63 @@ const getPendingMenus = async (req, res) => {
     }
 };
 
+// Helper: robustly resolve owner user id and set role to 'penjual'
+const setOwnerRoleToPenjual = async (restaurant) => {
+    try {
+        if (!restaurant) return null;
+        let ownerId = restaurant.user_id || null;
+
+        // Try owner email
+        if (!ownerId) {
+            const ownerEmail = restaurant.owner_email || restaurant.email || restaurant.ownerEmail || null;
+            if (ownerEmail) {
+                const [urows] = await db.execute('SELECT id, role FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
+                if (urows && urows[0] && urows[0].id) ownerId = urows[0].id;
+            }
+        }
+
+        // Try phone number
+        if (!ownerId && (restaurant.no_telepon || restaurant.phone_admin || restaurant.contact)) {
+            const phone = restaurant.no_telepon || restaurant.phone_admin || restaurant.contact;
+            const [urows] = await db.execute('SELECT id, role FROM users WHERE phone = ? LIMIT 1', [phone]);
+            if (urows && urows[0] && urows[0].id) ownerId = urows[0].id;
+        }
+
+        // Try owner name (exact match fallback)
+        if (!ownerId && restaurant.owner_name) {
+            const [urows] = await db.execute('SELECT id, role FROM users WHERE name = ? LIMIT 1', [restaurant.owner_name]);
+            if (urows && urows[0] && urows[0].id) ownerId = urows[0].id;
+        }
+
+        if (!ownerId) {
+            console.warn('[setOwnerRoleToPenjual] could not resolve owner user id for restaurant', restaurant && restaurant.id);
+            return null;
+        }
+
+        // Only update if not already 'penjual'
+        const [cur] = await db.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [ownerId]);
+        const currentRole = cur && cur[0] ? cur[0].role : null;
+        if (currentRole !== 'penjual') {
+            await db.execute('UPDATE users SET role = ? WHERE id = ?', ['penjual', ownerId]);
+            console.log(`[setOwnerRoleToPenjual] user ${ownerId} role set to 'penjual'`);
+        }
+
+        // Ensure restaurant row links to user_id if possible
+        if (restaurant.id && Number(restaurant.user_id || 0) !== Number(ownerId)) {
+            try {
+                await db.execute('UPDATE restorans SET user_id = ? WHERE id = ?', [ownerId, restaurant.id]);
+            } catch (linkErr) {
+                console.warn('[setOwnerRoleToPenjual] could not link restaurant to owner user_id (non-fatal):', linkErr && linkErr.message ? linkErr.message : linkErr);
+            }
+        }
+
+        return ownerId;
+    } catch (err) {
+        console.warn('[setOwnerRoleToPenjual] error', err && err.message ? err.message : err);
+        return null;
+    }
+};
+
 const verifyRestaurant = async (req, res) => {
     const { id } = req.params;
     const { status, note } = req.body; // expected: 'approved' | 'rejected' (or Indonesian equivalents)
@@ -159,6 +216,14 @@ const verifyRestaurant = async (req, res) => {
         const [rows] = await db.execute('SELECT * FROM restorans WHERE id = ?', [id]);
         const restaurant = rows && rows[0] ? rows[0] : null;
 
+        // If restaurant approved, try to set owner's user.role to 'penjual' (best-effort)
+        if (dbStatus === 'disetujui' && restaurant) {
+            try {
+                await setOwnerRoleToPenjual(restaurant);
+            } catch (roleErr) {
+                console.warn('[verifyRestaurant] failed to set user role to penjual (non-fatal):', roleErr && roleErr.message ? roleErr.message : roleErr);
+            }
+        }
         // Send notification email to owner (best-effort)
         try {
             const ownerEmail = restaurant && (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) ? (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) : null;
@@ -172,6 +237,25 @@ const verifyRestaurant = async (req, res) => {
                         if (!ownerId && ownerEmail) {
                             const [urows] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
                             ownerId = (urows && urows[0] && urows[0].id) ? urows[0].id : null;
+                        }
+                        // If we found an ownerId but the restaurant row is not linked to it, attempt to link the restaurant to the user
+                        if (ownerId && restaurant && Number(restaurant.user_id) !== Number(ownerId)) {
+                            try {
+                                await db.execute('UPDATE restorans SET user_id = ? WHERE id = ?', [ownerId, restaurant.id]);
+                                restaurant.user_id = ownerId;
+                            } catch (linkErr) {
+                                console.warn('[patchVerifyRestaurant] could not link restaurant to owner user_id (non-fatal):', linkErr && linkErr.message ? linkErr.message : linkErr);
+                            }
+                        }
+                        // If we found an ownerId but the restaurant row is not linked to it, attempt to link the restaurant to the user
+                        if (ownerId && restaurant && Number(restaurant.user_id) !== Number(ownerId)) {
+                            try {
+                                await db.execute('UPDATE restorans SET user_id = ? WHERE id = ?', [ownerId, restaurant.id]);
+                                // reflect in local object for subsequent operations
+                                restaurant.user_id = ownerId;
+                            } catch (linkErr) {
+                                console.warn('[verifyRestaurant] could not link restaurant to owner user_id (non-fatal):', linkErr && linkErr.message ? linkErr.message : linkErr);
+                            }
                         }
                         const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
                         const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
@@ -300,6 +384,15 @@ const patchVerifyRestaurant = async (req, res) => {
             }
         } catch (emailErr) {
             console.error('[patchVerifyRestaurant] email send failed (non-fatal):', emailErr && emailErr.message ? emailErr.message : emailErr);
+        }
+
+        // If approved, try to set owner's user.role to 'penjual' (best-effort)
+        if (dbStatus === 'disetujui' && restaurant) {
+            try {
+                await setOwnerRoleToPenjual(restaurant);
+            } catch (roleErr) {
+                console.warn('[patchVerifyRestaurant] failed to set user role to penjual (non-fatal):', roleErr && roleErr.message ? roleErr.message : roleErr);
+            }
         }
 
         return res.status(200).json({ message: 'Status restoran diperbarui.', restaurant });

@@ -14,6 +14,33 @@ class RestaurantModel {
     store_category, commitment_checked, health_focus, dominant_cooking_method,
     dominant_fat, maps_latlong, slug
   }) {
+    // If slug is provided, normalize and ensure uniqueness
+    const slugify = (text) => {
+      if (!text) return null;
+      return String(text).toLowerCase()
+        .normalize('NFKD')
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9\-]/g, '')
+        .replace(/\-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    };
+
+    let finalSlug = slug ? slugify(slug) : null;
+    if (finalSlug) {
+      // ensure uniqueness (append suffix if needed)
+      let candidate = finalSlug;
+      let suffix = 0;
+      while (true) {
+        const [rows] = await pool.query('SELECT id FROM restorans WHERE slug = ? AND id != ? LIMIT 1', [candidate, id]);
+        if (!rows || rows.length === 0) {
+          finalSlug = candidate;
+          break;
+        }
+        suffix += 1;
+        candidate = `${finalSlug}-${suffix}`;
+      }
+    }
+
     const sql = `UPDATE restorans SET
       deskripsi = ?, latitude = ?, longitude = ?, no_telepon = ?, jenis_usaha = ?,
       owner_name = ?, owner_email = ?, phone_admin = ?, operating_hours = ?, sales_channels = ?,
@@ -40,7 +67,7 @@ class RestaurantModel {
       dominant_cooking_method || null,
       dominant_fat || null,
       maps_latlong || null,
-      slug || null,
+      finalSlug || null,
       id
     ]);
 
@@ -97,14 +124,28 @@ class RestaurantModel {
   }
 
   static async findBySlug(slug) {
-    const sql = `
-      SELECT id, user_id, nama_restoran, deskripsi, alamat, latitude, longitude, no_telepon
+    // Prefer explicit slug column lookup. If not found, try normalized name fallback.
+    const sqlSlug = `
+      SELECT *
       FROM restorans
-      WHERE nama_restoran = ? AND status_verifikasi = 'disetujui'
+      WHERE slug = ? AND status_verifikasi = 'disetujui'
       LIMIT 1
     `;
-    const [rows] = await pool.query(sql, [slug]);
-    return rows[0] || null;
+    const [rows] = await pool.query(sqlSlug, [slug]);
+    if (rows && rows.length) return rows[0];
+
+    // Fallback: try normalized name (replace '-' with space) and also exact name
+    const nameCandidate = String(slug).replace(/-/g, ' ');
+    const sqlNorm = `
+      SELECT * FROM restorans
+      WHERE LOWER(REPLACE(nama_restoran, ' ', '-')) = LOWER(?) AND status_verifikasi = 'disetujui' LIMIT 1
+    `;
+    const [rowsNorm] = await pool.query(sqlNorm, [slug]);
+    if (rowsNorm && rowsNorm.length) return rowsNorm[0];
+
+    const sqlExact = `SELECT * FROM restorans WHERE LOWER(nama_restoran) = LOWER(?) AND status_verifikasi = 'disetujui' LIMIT 1`;
+    const [rowsExact] = await pool.query(sqlExact, [nameCandidate]);
+    return rowsExact[0] || null;
   }
 }
 

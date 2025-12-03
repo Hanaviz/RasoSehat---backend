@@ -5,7 +5,8 @@ const path = require('path');
 const list = async (req, res) => {
   try {
     const rows = await MenuModel.findAll();
-    return res.json({ success: true, data: rows.map(r => ({ ...r, diet_claims: JSON.parse(r.diet_claims || '[]') })) });
+    // MenuModel.findAll already returns diet_claims as parsed array
+    return res.json({ success: true, data: rows });
   } catch (err) {
     console.error('menu list error', err);
     return res.status(500).json({ success: false, message: 'Gagal mengambil daftar menu.' });
@@ -51,7 +52,9 @@ const getById = async (req, res) => {
 const getBySlug = async (req, res) => {
   try {
     const slug = req.params.slug;
+    console.log('[DEBUG getBySlug] slug:', slug);
     const menu = await MenuModel.findBySlug(slug);
+    console.log('[DEBUG getBySlug] menu fetched:', menu ? { id: menu.id, nama_menu: menu.nama_menu, diet_claims: menu.diet_claims } : null);
     if (!menu) return res.status(404).json({ success: false, message: 'Menu tidak ditemukan.' });
     menu.diet_claims = JSON.parse(menu.diet_claims || '[]');
     return res.json({ success: true, data: menu });

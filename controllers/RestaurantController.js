@@ -12,13 +12,13 @@ function checkOwnership(reqUser, resourceOwnerId) {
 const create = async (req, res) => {
   try {
     const userId = req.user && req.user.id;
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
     const { nama_restoran, alamat } = req.body;
-    if (!nama_restoran || !alamat) return res.status(400).json({ message: 'Field nama_restoran dan alamat wajib.' });
+    if (!nama_restoran || !alamat) return res.status(400).json({ success: false, message: 'Field nama_restoran dan alamat wajib.' });
 
     const restaurant = await RestaurantModel.createStep1({ nama_restoran, alamat, user_id: userId });
-    return res.status(201).json({ message: 'Restoran dibuat (step 1).', data: restaurant });
+    return res.status(201).json({ success: true, message: 'Restoran dibuat (step 1).', data: restaurant });
   } catch (error) {
     console.error('create restaurant error', error);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -29,9 +29,9 @@ const updateStep2 = async (req, res) => {
   try {
     const id = req.params.id;
     const existing = await RestaurantModel.findById(id);
-    if (!existing) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+    if (!existing) return res.status(404).json({ success: false, message: 'Restoran tidak ditemukan.' });
 
-    if (!checkOwnership(req.user, existing.user_id)) return res.status(403).json({ message: 'Akses ditolak: bukan pemilik.' });
+    if (!checkOwnership(req.user, existing.user_id)) return res.status(403).json({ success: false, message: 'Akses ditolak: bukan pemilik.' });
     // Extract fields (supporting new columns)
     const {
       deskripsi, latitude, longitude, no_telepon, jenis_usaha, mapsLatLong,
@@ -85,7 +85,7 @@ const updateStep2 = async (req, res) => {
       slug: slug || null
     });
 
-    return res.json({ message: 'Step 2 disimpan.', data: updated });
+    return res.json({ success: true, message: 'Step 2 disimpan.', data: updated });
   } catch (error) {
     console.error('updateStep2 error', error);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -96,9 +96,9 @@ const updateStep3 = async (req, res) => {
   try {
     const id = req.params.id;
     const existing = await RestaurantModel.findById(id);
-    if (!existing) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+    if (!existing) return res.status(404).json({ success: false, message: 'Restoran tidak ditemukan.' });
 
-    if (!checkOwnership(req.user, existing.user_id)) return res.status(403).json({ message: 'Akses ditolak: bukan pemilik.' });
+    if (!checkOwnership(req.user, existing.user_id)) return res.status(403).json({ success: false, message: 'Akses ditolak: bukan pemilik.' });
     // Support multi-file uploads and store as JSON arrays under `documents_json`.
     // Expected upload fields: foto_ktp (array), npwp (array), dokumen_usaha (array)
     const files = req.files || {};
@@ -133,7 +133,7 @@ const updateStep3 = async (req, res) => {
       documents_json: documentsJson
     });
 
-    return res.json({ message: 'Dokumen diunggah.', data: updated });
+    return res.json({ success: true, message: 'Dokumen diunggah.', data: updated });
   } catch (error) {
     console.error('updateStep3 error', error);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -144,9 +144,9 @@ const submitFinal = async (req, res) => {
   try {
     const id = req.params.id;
     const existing = await RestaurantModel.findById(id);
-    if (!existing) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+    if (!existing) return res.status(404).json({ success: false, message: 'Restoran tidak ditemukan.' });
 
-    if (!checkOwnership(req.user, existing.user_id)) return res.status(403).json({ message: 'Akses ditolak: bukan pemilik.' });
+    if (!checkOwnership(req.user, existing.user_id)) return res.status(403).json({ success: false, message: 'Akses ditolak: bukan pemilik.' });
 
     const updated = await RestaurantModel.submitFinal(id);
     // Try to write a verifikasi record for audit trail using expected column names
@@ -160,7 +160,7 @@ const submitFinal = async (req, res) => {
       console.warn('Could not insert verifikasi record (non-fatal):', err.message || err);
     }
 
-    return res.json({ message: 'Pengajuan pendaftaran dikirim untuk verifikasi admin.', data: updated });
+    return res.json({ success: true, message: 'Pengajuan pendaftaran dikirim untuk verifikasi admin.', data: updated });
   } catch (error) {
     console.error('submitFinal error', error);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -171,8 +171,8 @@ const getById = async (req, res) => {
   try {
     const id = req.params.id;
     const data = await RestaurantModel.findById(id);
-    if (!data) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
-    return res.json({ data });
+    if (!data) return res.status(404).json({ success: false, message: 'Restoran tidak ditemukan.' });
+    return res.json({ success: true, data });
   } catch (error) {
     console.error('getById error', error);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -183,7 +183,7 @@ const getByUserId = async (req, res) => {
   try {
     const userId = req.params.userId || (req.user && req.user.id);
     const rows = await RestaurantModel.findByUserId(userId);
-    return res.json({ data: rows });
+    return res.json({ success: true, data: rows });
   } catch (error) {
     console.error('getByUserId error', error);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });
@@ -193,7 +193,7 @@ const getByUserId = async (req, res) => {
 const getAll = async (req, res) => {
   try {
     const rows = await RestaurantModel.findAll();
-    return res.json({ data: rows });
+    return res.json({ success: true, data: rows });
   } catch (error) {
     console.error('getAll error', error);
     return res.status(500).json({ message: 'Terjadi kesalahan server.' });

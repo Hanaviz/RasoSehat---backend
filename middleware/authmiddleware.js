@@ -47,13 +47,4 @@ const verifyAdmin = (req, res, next) => {
     }
 };
 
-const verifyPenjual = (req, res, next) => {
-    // Pastikan user sudah diverifikasi tokennya terlebih dahulu
-    if (req.user && (req.user.role === 'penjual' || req.user.role === 'admin')) {
-        next(); // Lanjutkan, user adalah Penjual atau Admin
-    } else {
-        return res.status(403).json({ message: 'Akses Ditolak: Hanya Penjual yang diizinkan.' });
-    }
-};
-
-module.exports = { verifyToken, verifyAdmin, verifyPenjual };
+module.exports = { verifyToken, verifyAdmin };

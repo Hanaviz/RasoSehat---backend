@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const RestaurantController = require('../controllers/RestaurantController');
-const { verifyToken, verifyPenjual } = require('../middleware/authmiddleware');
+const { verifyToken } = require('../middleware/authmiddleware');
 const upload = require('../middleware/uploadMiddleware');
 
 // Public: get all restaurants
