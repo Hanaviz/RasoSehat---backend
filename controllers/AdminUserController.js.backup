@@ -1,0 +1,191 @@
+// RasoSehat-Backend/controllers/AdminUserController.js
+// Controller untuk admin manage users
+
+const AdminUserModel = require('../models/AdminUserModel');
+
+/**
+ * GET /api/admin/users
+ * Fetch all users with optional search and pagination
+ */
+const getAllUsers = async (req, res) => {
+  try {
+    const { search = '', page = 1, limit = 20 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    const users = await AdminUserModel.getAllUsers({
+      search,
+      limit: Number(limit),
+      offset
+    });
+
+    const totalCount = await AdminUserModel.getUserCount(search);
+    const totalPages = Math.ceil(totalCount / Number(limit));
+
+    return res.status(200).json({
+      success: true,
+      message: 'Data pengguna berhasil diambil',
+      data: users,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: totalCount,
+        totalPages
+      }
+    });
+  } catch (err) {
+    console.error('getAllUsers error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal mengambil data pengguna'
+    });
+  }
+};
+
+/**
+ * GET /api/admin/users/:id
+ * Get single user detail
+ */
+const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const user = await AdminUserModel.getUserById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pengguna tidak ditemukan'
+      });
+    }
+
+    // Get additional info
+    const restaurantCount = await AdminUserModel.getUserRestaurantCount(id);
+    const reviewCount = await AdminUserModel.getUserReviewCount(id);
+
+    const userData = {
+      ...user,
+      restaurantCount,
+      reviewCount
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: 'Detail pengguna berhasil diambil',
+      data: userData
+    });
+  } catch (err) {
+    console.error('getUserById error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal mengambil detail pengguna'
+    });
+  }
+};
+
+/**
+ * PATCH /api/admin/users/:id/role
+ * Update user role
+ * Body: { role: 'admin' | 'penjual' | 'pembeli' }
+ */
+const updateUserRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+    const adminId = req.user.id; // From JWT token (verifyToken middleware)
+
+    // Validation: admin tidak boleh menurunkan role sendiri
+    if (Number(id) === Number(adminId) && role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Anda tidak bisa menurunkan role admin sendiri'
+      });
+    }
+
+    // Validation: role harus valid
+    const validRoles = ['admin', 'penjual', 'pembeli'];
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Role harus salah satu dari: admin, penjual, pembeli'
+      });
+    }
+
+    // Check if user exists
+    const user = await AdminUserModel.getUserById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pengguna tidak ditemukan'
+      });
+    }
+
+    // Update role
+    const updatedUser = await AdminUserModel.updateUserRole(id, role);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Role pengguna berhasil diubah',
+      data: updatedUser
+    });
+/**
+ * DELETE /api/admin/users/:id
+ * Delete user
+ */
+const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const adminId = req.user.id; // From JWT token (verifyToken middleware)
+
+    // Validation: cannot delete self
+    if (Number(id) === Number(adminId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Anda tidak bisa menghapus akun admin sendiri'
+      });
+    }
+
+    // Check if user exists
+    const user = await AdminUserModel.getUserById(id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Pengguna tidak ditemukan'
+      });
+    }
+
+    // Validation: cannot delete other admin
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Tidak bisa menghapus akun admin lain'
+      });
+    }
+
+    // Delete user
+    const deleted = await AdminUserModel.deleteUser(id);
+    if (!deleted) {
+      return res.status(500).json({
+        success: false,
+        message: 'Gagal menghapus pengguna'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'User berhasil dihapus'
+    });
+  } catch (err) {
+    console.error('deleteUser error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal menghapus pengguna',
+      error: err.message
+    });
+  }
+};
+
+module.exports = {
+  getAllUsers,
+  getUserById,
+  updateUserRole,
+  deleteUser
+};
