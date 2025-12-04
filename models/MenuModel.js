@@ -231,3 +231,31 @@ MenuModel.createMenu = async (data) => {
 module.exports = MenuModel;
 
 module.exports = MenuModel;
+
+// Find menus by restaurant id with category and average rating
+MenuModel.findByRestaurantId = async (restoranId) => {
+    const q = `
+        SELECT
+            m.id, m.nama_menu, m.slug, m.harga, m.foto, m.status_verifikasi,
+            k.nama_kategori AS kategori, m.kalori,
+            COALESCE(ROUND(AVG(u.rating),2), NULL) AS rating
+        FROM menu_makanan m
+        LEFT JOIN kategori_makanan k ON m.kategori_id = k.id
+        LEFT JOIN ulasan u ON u.menu_id = m.id
+        WHERE m.restoran_id = ?
+        GROUP BY m.id
+        ORDER BY m.updated_at DESC
+    `;
+    const [rows] = await db.execute(q, [restoranId]);
+    return rows.map(r => ({
+        id: r.id,
+        nama_menu: r.nama_menu,
+        slug: r.slug,
+        harga: r.harga,
+        foto: r.foto,
+        status_verifikasi: r.status_verifikasi,
+        kategori: r.kategori,
+        kalori: r.kalori,
+        rating: r.rating !== null ? Number(r.rating) : null
+    }));
+};

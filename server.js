@@ -46,6 +46,11 @@ app.use('/api/menus', menuRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Mount restaurants API
 app.use('/api/restaurants', restaurantRoutes);
+const { verifyToken } = require('./middleware/authmiddleware');
+const RestaurantController = require('./controllers/RestaurantController');
+
+// My-store quick endpoint: returns restaurant for logged-in user + menus and stats
+app.get('/api/my-store', verifyToken, RestaurantController.getMyStore);
 app.use('/api/ulasan', reviewRoutes);
 
 app.get('/', (req, res) => {

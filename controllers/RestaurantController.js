@@ -190,6 +190,41 @@ const getByUserId = async (req, res) => {
   }
 };
 
+// GET /api/my-store
+const getMyStore = async (req, res) => {
+  try {
+    const userId = req.user && req.user.id;
+    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    const rows = await RestaurantModel.findByUserId(userId);
+    if (!rows || rows.length === 0) {
+      return res.json({ success: true, restaurant: null, menus: [], menuStats: { totalMenu: 0, pending: 0, approved: 0, rejected: 0 } });
+    }
+
+    // Use first restaurant if multiple
+    const restaurant = await RestaurantModel.findById(rows[0].id);
+
+    // Fetch menus for this restaurant
+    const MenuModel = require('../models/MenuModel');
+    const menus = await MenuModel.findByRestaurantId(restaurant.id);
+
+    // Build menuStats
+    const stats = { totalMenu: 0, pending: 0, approved: 0, rejected: 0 };
+    stats.totalMenu = Array.isArray(menus) ? menus.length : 0;
+    menus.forEach(m => {
+      const st = (m.status_verifikasi || '').toLowerCase();
+      if (st === 'pending') stats.pending += 1;
+      else if (st === 'disetujui' || st === 'approved') stats.approved += 1;
+      else if (st === 'ditolak' || st === 'rejected') stats.rejected += 1;
+    });
+
+    return res.json({ success: true, restaurant, menus, menuStats: stats });
+  } catch (error) {
+    console.error('getMyStore error', error);
+    return res.status(500).json({ success: false, message: 'Gagal mengambil data toko', error: error.message });
+  }
+};
+
 const getAll = async (req, res) => {
   try {
     const rows = await RestaurantModel.findAll();
@@ -207,5 +242,6 @@ module.exports = {
   submitFinal,
   getById,
   getByUserId,
+  getMyStore,
   getAll
 };
