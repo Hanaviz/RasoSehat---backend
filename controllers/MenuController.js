@@ -70,8 +70,28 @@ const createMenu = async (req, res) => {
     if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
     if (!(user.role === 'penjual' || user.role === 'admin')) return res.status(403).json({ success: false, message: 'Akses ditolak: hanya penjual yang dapat menambah menu.' });
 
+    // Debug: log incoming body and file for troubleshooting missing fields
+    console.log('[DEBUG createMenu] req.user:', user ? { id: user.id, role: user.role } : null);
+    console.log('[DEBUG createMenu] req.body keys:', Object.keys(req.body || {}));
+    console.log('[DEBUG createMenu] req.body sample:', req.body);
+    console.log('[DEBUG createMenu] req.file:', req.file ? { fieldname: req.file.fieldname, path: req.file.path, originalname: req.file.originalname } : null);
+
     const body = req.body || {};
     const file = req.file || null;
+
+    // Server-side validation: required fields
+    const missing = [];
+    if (!body.restoran_id) missing.push('restoran_id');
+    if (!body.kategori_id) missing.push('kategori_id');
+    if (!body.nama_menu) missing.push('nama_menu');
+    if (!body.harga) missing.push('harga');
+    // foto is required per client requirement
+    if (!file) missing.push('foto');
+
+    if (missing.length) {
+      console.warn('[DEBUG createMenu] Missing required fields:', missing);
+      return res.status(400).json({ success: false, message: `Field wajib hilang: ${missing.join(', ')}` });
+    }
 
     const restoran_id = body.restoran_id;
     if (!restoran_id) return res.status(400).json({ success: false, message: 'restoran_id wajib.' });

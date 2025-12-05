@@ -104,12 +104,19 @@ const NotificationModel = require('../models/NotificationModel');
 const getPendingMenus = async (req, res) => {
     try {
         const [rows] = await db.execute(`
-            SELECT m.id, m.nama_menu, m.deskripsi, m.harga, m.foto, m.status_verifikasi, m.restoran_id, r.nama_restoran
+            SELECT m.id, m.nama_menu, m.deskripsi, m.bahan_baku, m.metode_masak, m.diet_claims, 
+                   m.kalori, m.protein, m.gula, m.lemak, m.serat, m.lemak_jenuh, m.harga, m.foto, 
+                   m.status_verifikasi, m.catatan_admin, m.restoran_id, r.nama_restoran
             FROM menu_makanan m
             JOIN restorans r ON m.restoran_id = r.id
             WHERE m.status_verifikasi = 'pending' OR m.status_verifikasi = 'menunggu'
         `);
-        return res.status(200).json(rows);
+        // Parse diet_claims if it's JSON
+        const processedRows = rows.map(row => ({
+            ...row,
+            diet_claims: row.diet_claims ? JSON.parse(row.diet_claims) : []
+        }));
+        return res.status(200).json(processedRows);
     } catch (err) {
         console.error('getPendingMenus error', err);
         return res.status(500).json({ message: 'Gagal mengambil daftar menu pending.' });
