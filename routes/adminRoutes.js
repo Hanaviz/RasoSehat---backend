@@ -11,10 +11,15 @@ const adminMiddleware = require('../middleware/adminmiddleware');
 router.get('/pending/restaurants', verifyToken, adminMiddleware, adminController.getPendingRestaurants);
 router.get('/pending/menus', verifyToken, adminMiddleware, adminController.getPendingMenus);
 router.get('/restaurant/:id', verifyToken, adminMiddleware, adminController.getRestaurantById);
+// New: Active and history endpoints for management views
+router.get('/restaurants/active', verifyToken, adminMiddleware, adminController.getActiveRestaurants);
+router.get('/restaurants/history', verifyToken, adminMiddleware, adminController.getRestaurantVerificationHistory);
 router.put('/verify/restaurant/:id', verifyToken, adminMiddleware, adminController.verifyRestaurant);
 // New PATCH endpoint for admin verification (required flow)
 router.patch('/restaurants/:id/verify', verifyToken, adminMiddleware, adminController.patchVerifyRestaurant);
 router.put('/verify/menu/:id', verifyToken, adminMiddleware, adminController.verifyMenu);
+router.get('/menus/active', verifyToken, adminMiddleware, adminController.getActiveMenus);
+router.get('/menus/history', verifyToken, adminMiddleware, adminController.getMenuVerificationHistory);
 
 // ===== USER MANAGEMENT =====
 router.get('/users', verifyToken, adminMiddleware, adminUserController.getAllUsers);

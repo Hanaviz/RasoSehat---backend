@@ -89,6 +89,35 @@ const MenuModel = {
             return { ...r, diet_claims: claims };
         });
     },
+    // Fungsi untuk mendapatkan semua menu yang sudah diverifikasi (disetujui)
+    findAllApproved: async () => {
+        const q = `
+            SELECT
+                m.id, m.restoran_id, m.kategori_id, m.nama_menu, m.deskripsi,
+                m.harga, m.foto, m.slug, m.status_verifikasi, m.diet_claims,
+                m.kalori, m.protein, m.gula, m.lemak, m.serat, m.lemak_jenuh,
+                k.nama_kategori, r.nama_restoran, r.alamat
+            FROM menu_makanan m
+            LEFT JOIN kategori_makanan k ON m.kategori_id = k.id
+            LEFT JOIN restorans r ON m.restoran_id = r.id
+            WHERE m.status_verifikasi = 'disetujui'
+            ORDER BY m.updated_at DESC
+        `;
+        const [rows] = await db.execute(q);
+        return rows.map(r => {
+            let claims = [];
+            try {
+                claims = r.diet_claims ? JSON.parse(r.diet_claims) : [];
+            } catch (e) {
+                try {
+                    claims = String(r.diet_claims).split(',').map(s => s.trim()).filter(Boolean);
+                } catch (e2) {
+                    claims = [];
+                }
+            }
+            return { ...r, diet_claims: claims };
+        });
+    },
     
     // Fungsi untuk Detail Menu
     getMenuDetail: async (id) => {

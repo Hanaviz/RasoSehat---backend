@@ -4,8 +4,8 @@ const path = require('path');
 
 const list = async (req, res) => {
   try {
-    const rows = await MenuModel.findAll();
-    // MenuModel.findAll already returns diet_claims as parsed array
+    // Return only approved menus for public listing
+    const rows = await MenuModel.findAllApproved ? await MenuModel.findAllApproved() : await MenuModel.findAll();
     return res.json({ success: true, data: rows });
   } catch (err) {
     console.error('menu list error', err);

@@ -123,6 +123,141 @@ const getPendingMenus = async (req, res) => {
     }
 };
 
+// GET /admin/restaurants/active?page=&per_page=
+const getActiveRestaurants = async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
+        const offset = (page - 1) * perPage;
+
+        const [rows] = await db.execute(`
+            SELECT id, user_id, nama_restoran, deskripsi, alamat, no_telepon, jenis_usaha, owner_name, owner_email, status_verifikasi, created_at, updated_at
+            FROM restorans
+            WHERE status_verifikasi = 'disetujui'
+            ORDER BY updated_at DESC
+            LIMIT ? OFFSET ?
+        `, [perPage, offset]);
+
+        // return simple paging metadata
+        return res.status(200).json({ data: rows, page, per_page: perPage });
+    } catch (err) {
+        console.error('getActiveRestaurants error', err);
+        return res.status(500).json({ message: 'Gagal mengambil restoran aktif.' });
+    }
+};
+
+// GET /admin/restaurants/history?page=&per_page=
+const getRestaurantVerificationHistory = async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
+        const offset = (page - 1) * perPage;
+        // Try the modern schema first (target_type/target_id/note/created_at)
+        let rows;
+        try {
+            const q = `
+                SELECT v.id, v.target_id AS restoran_id, v.admin_id, u.name AS admin_name, v.status, v.note AS catatan, v.created_at AS verified_at, r.nama_restoran
+                FROM verifikasi v
+                LEFT JOIN restorans r ON v.target_id = r.id
+                LEFT JOIN users u ON v.admin_id = u.id
+                WHERE v.target_type = 'restoran'
+                ORDER BY v.created_at DESC
+                LIMIT ? OFFSET ?
+            `;
+            const result = await db.execute(q, [perPage, offset]);
+            rows = result[0];
+        } catch (primaryErr) {
+            // Fallback for legacy schema: tipe_objek/objek_id/catatan/tanggal_verifikasi
+            console.warn('[getRestaurantVerificationHistory] primary query failed, trying legacy schema fallback:', primaryErr && primaryErr.message ? primaryErr.message : primaryErr);
+            const qLegacy = `
+                SELECT v.id, v.objek_id AS restoran_id, v.admin_id, u.name AS admin_name, v.status, v.catatan AS catatan, v.tanggal_verifikasi AS verified_at, r.nama_restoran
+                FROM verifikasi v
+                LEFT JOIN restorans r ON v.objek_id = r.id
+                LEFT JOIN users u ON v.admin_id = u.id
+                WHERE v.tipe_objek = 'restoran'
+                ORDER BY v.tanggal_verifikasi DESC
+                LIMIT ? OFFSET ?
+            `;
+            const legacyResult = await db.execute(qLegacy, [perPage, offset]);
+            rows = legacyResult[0];
+        }
+
+        return res.status(200).json({ data: rows, page, per_page: perPage });
+    } catch (err) {
+        console.error('getRestaurantVerificationHistory error', err);
+        return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran.' });
+    }
+};
+
+// GET /admin/menus/active?page=&per_page=
+const getActiveMenus = async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
+        const offset = (page - 1) * perPage;
+
+        const q = `
+            SELECT m.id, m.nama_menu, m.harga, m.foto, m.slug, m.kalori, m.protein, m.gula, m.lemak, m.serat, m.lemak_jenuh, r.nama_restoran
+            FROM menu_makanan m
+            JOIN restorans r ON m.restoran_id = r.id
+            WHERE m.status_verifikasi = 'disetujui'
+            ORDER BY m.updated_at DESC
+            LIMIT ? OFFSET ?
+        `;
+        const [rows] = await db.execute(q, [perPage, offset]);
+        return res.status(200).json({ data: rows, page, per_page: perPage });
+    } catch (err) {
+        console.error('getActiveMenus error', err);
+        return res.status(500).json({ message: 'Gagal mengambil menu aktif.' });
+    }
+};
+
+// GET /admin/menus/history?page=&per_page=
+const getMenuVerificationHistory = async (req, res) => {
+    try {
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
+        const offset = (page - 1) * perPage;
+        // Try modern schema first
+        let rows;
+        try {
+            const q = `
+                SELECT v.id, v.target_id AS menu_id, v.admin_id, u.name AS admin_name, v.status, v.note AS catatan, v.created_at AS verified_at,
+                       m.nama_menu, r.nama_restoran
+                FROM verifikasi v
+                LEFT JOIN menu_makanan m ON v.target_id = m.id
+                LEFT JOIN restorans r ON m.restoran_id = r.id
+                LEFT JOIN users u ON v.admin_id = u.id
+                WHERE v.target_type = 'menu'
+                ORDER BY v.created_at DESC
+                LIMIT ? OFFSET ?
+            `;
+            const result = await db.execute(q, [perPage, offset]);
+            rows = result[0];
+        } catch (primaryErr) {
+            console.warn('[getMenuVerificationHistory] primary query failed, trying legacy schema fallback:', primaryErr && primaryErr.message ? primaryErr.message : primaryErr);
+            const qLegacy = `
+                SELECT v.id, v.objek_id AS menu_id, v.admin_id, u.name AS admin_name, v.status, v.catatan AS catatan, v.tanggal_verifikasi AS verified_at,
+                       m.nama_menu, r.nama_restoran
+                FROM verifikasi v
+                LEFT JOIN menu_makanan m ON v.objek_id = m.id
+                LEFT JOIN restorans r ON m.restoran_id = r.id
+                LEFT JOIN users u ON v.admin_id = u.id
+                WHERE v.tipe_objek = 'menu'
+                ORDER BY v.tanggal_verifikasi DESC
+                LIMIT ? OFFSET ?
+            `;
+            const legacyResult = await db.execute(qLegacy, [perPage, offset]);
+            rows = legacyResult[0];
+        }
+
+        return res.status(200).json({ data: rows, page, per_page: perPage });
+    } catch (err) {
+        console.error('getMenuVerificationHistory error', err);
+        return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi menu.' });
+    }
+};
+
 // Helper: robustly resolve owner user id and set role to 'penjual'
 const setOwnerRoleToPenjual = async (restaurant) => {
     try {
@@ -490,5 +625,9 @@ module.exports = {
     verifyMenu,
     getRestaurantById,
     patchVerifyRestaurant,
+    getActiveRestaurants,
+    getRestaurantVerificationHistory,
+    getActiveMenus,
+    getMenuVerificationHistory,
 };
 
