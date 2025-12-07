@@ -1,8 +1,7 @@
-const db = require('../config/db');
+const supabase = require('../supabase/supabaseClient');
 
 /**
- * NotificationModel
- * Provides centralized DB operations for notifications table.
+ * NotificationModel (Supabase-backed)
  */
 const NotificationModel = {
   /**
@@ -13,11 +12,18 @@ const NotificationModel = {
   async createNotification({ user_id = null, recipient_email = null, type = null, title = '', message = '', data = null }) {
     try {
       const payload = data ? JSON.stringify(data) : null;
-      const [result] = await db.execute(
-        'INSERT INTO notifications (user_id, recipient_email, `type`, title, message, data, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-        [user_id, recipient_email, type, title, message, payload]
-      );
-      return result.insertId || null;
+      const insert = {
+        user_id: user_id || null,
+        recipient_email: recipient_email || null,
+        type: type || null,
+        title: title || '',
+        message: message || '',
+        data: payload,
+        created_at: new Date().toISOString(),
+      };
+      const { data: inserted, error } = await supabase.from('notifications').insert(insert).select('id').limit(1).single();
+      if (error) throw error;
+      return inserted?.id ?? null;
     } catch (err) {
       throw err;
     }
@@ -29,10 +35,21 @@ const NotificationModel = {
    */
   async getNotificationsByUser(user_id = null, recipient_email = null, limit = 200) {
     try {
-      const [rows] = await db.execute(
-        'SELECT id, user_id, recipient_email, `type`, title, message, data, is_read, created_at FROM notifications WHERE (user_id = ? OR recipient_email = ?) ORDER BY created_at DESC LIMIT ?',
-        [user_id, recipient_email, Number(limit || 200)]
-      );
+      // Build query conditionally to avoid matching nulls incorrectly
+      let query = supabase.from('notifications').select('id,user_id,recipient_email,type,title,message,data,is_read,created_at').order('created_at', { ascending: false }).limit(Number(limit || 200));
+      if (user_id && recipient_email) {
+        query = query.or(`user_id.eq.${user_id},recipient_email.eq.${recipient_email}`);
+      } else if (user_id) {
+        query = query.eq('user_id', user_id);
+      } else if (recipient_email) {
+        query = query.eq('recipient_email', recipient_email);
+      } else {
+        // no filters -> return empty to avoid exposing all notifications
+        return [];
+      }
+
+      const { data: rows, error } = await query;
+      if (error) throw error;
 
       return (rows || []).map(r => {
         let parsed = null;
@@ -61,32 +78,46 @@ const NotificationModel = {
 
   /**
    * Mark single notification as read by id.
-   * Returns affectedRows (number).
-   */
-  /**
-   * Mark single notification as read by id, but only if it belongs to the given user_id or recipient_email when provided.
-   * If user_id/recipient_email are provided, the update will include ownership check.
+   * If `user_id` or `recipient_email` are provided, the update will include ownership checks.
+   * Returns rowCount (number).
    */
   async markAsRead(id, user_id = null, recipient_email = null) {
     try {
+      if (!id) return 0;
+      // Fetch the notification to perform ownership check
+      const { data: existing, error: fetchErr } = await supabase.from('notifications').select('id,user_id,recipient_email').eq('id', id).limit(1).single();
+      if (fetchErr) throw fetchErr;
+      if (!existing) return 0;
       if (user_id || recipient_email) {
-        const [result] = await db.execute('UPDATE notifications SET is_read = 1 WHERE id = ? AND (user_id = ? OR recipient_email = ?)', [id, user_id, recipient_email]);
-        return result.affectedRows || 0;
+        if ((user_id && existing.user_id !== user_id) && (recipient_email && existing.recipient_email !== recipient_email)) {
+          return 0;
+        }
       }
-      const [result] = await db.execute('UPDATE notifications SET is_read = 1 WHERE id = ?', [id]);
-      return result.affectedRows || 0;
+      const { data, error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id).select('id');
+      if (error) throw error;
+      return data ? 1 : 0;
     } catch (err) {
       throw err;
     }
   },
-
-  /**
-   * Mark all notifications as read for a user or recipient email.
+    /**
+     * Mark single notification as read by id.
+     * Returns rowCount (number).
    */
   async markAllAsRead(user_id = null, recipient_email = null) {
     try {
-      const [result] = await db.execute('UPDATE notifications SET is_read = 1 WHERE (user_id = ? OR recipient_email = ?)', [user_id, recipient_email]);
-      return result.affectedRows || 0;
+      if (!user_id && !recipient_email) return 0;
+      let query = supabase.from('notifications');
+      if (user_id && recipient_email) {
+        query = query.or(`user_id.eq.${user_id},recipient_email.eq.${recipient_email}`);
+      } else if (user_id) {
+        query = query.eq('user_id', user_id);
+      } else if (recipient_email) {
+        query = query.eq('recipient_email', recipient_email);
+      }
+      const { data, error } = await query.update({ is_read: true }).select('id');
+      if (error) throw error;
+      return Array.isArray(data) ? data.length : (data ? 1 : 0);
     } catch (err) {
       throw err;
     }

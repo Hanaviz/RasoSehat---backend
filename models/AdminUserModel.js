@@ -1,7 +1,6 @@
-// RasoSehat-Backend/models/AdminUserModel.js
-// Model untuk admin manage users (tidak berhubungan dengan user profile biasa)
+// RasoSehat-Backend/models/AdminUserModel.js (Supabase-backed)
 
-const db = require('../config/db');
+const supabase = require('../supabase/supabaseClient');
 
 const AdminUserModel = {
   /**
@@ -11,24 +10,17 @@ const AdminUserModel = {
    */
   async getAllUsers({ search = '', limit = 50, offset = 0 } = {}) {
     try {
-      let query = `
-        SELECT 
-          id, name, email, phone, role, avatar, created_at, birth_date, gender
-        FROM users
-      `;
-      const params = [];
-
+      const q = supabase.from('users').select('id,name,email,phone,role,avatar,created_at,birth_date,gender');
       if (search && search.trim()) {
-        query += ` WHERE name LIKE ? OR email LIKE ?`;
-        const searchTerm = `%${search}%`;
-        params.push(searchTerm, searchTerm);
+        const term = `%${search}%`;
+        q.or(`name.ilike.${term},email.ilike.${term}`);
       }
-
-      query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-      params.push(Number(limit), Number(offset));
-
-      const [rows] = await db.execute(query, params);
-      return rows || [];
+      q.order('created_at', { ascending: false });
+      const start = Number(offset || 0);
+      const end = start + (Number(limit || 50) - 1);
+      const { data, error } = await q.range(start, end);
+      if (error) throw error;
+      return data || [];
     } catch (err) {
       throw err;
     }
@@ -41,17 +33,14 @@ const AdminUserModel = {
    */
   async getUserCount(search = '') {
     try {
-      let query = `SELECT COUNT(*) as total FROM users`;
-      const params = [];
-
+      const q = supabase.from('users').select('id', { count: 'exact' });
       if (search && search.trim()) {
-        query += ` WHERE name LIKE ? OR email LIKE ?`;
-        const searchTerm = `%${search}%`;
-        params.push(searchTerm, searchTerm);
+        const term = `%${search}%`;
+        q.or(`name.ilike.${term},email.ilike.${term}`);
       }
-
-      const [rows] = await db.execute(query, params);
-      return rows[0] ? rows[0].total : 0;
+      const { data, error, count } = await q;
+      if (error) throw error;
+      return Number(count ?? (data ? data.length : 0));
     } catch (err) {
       throw err;
     }
@@ -64,12 +53,9 @@ const AdminUserModel = {
    */
   async getUserById(userId) {
     try {
-      const [rows] = await db.execute(
-        `SELECT id, name, email, phone, role, avatar, birth_date, gender, created_at 
-         FROM users WHERE id = ? LIMIT 1`,
-        [userId]
-      );
-      return rows[0] || null;
+      const { data, error } = await supabase.from('users').select('id,name,email,phone,role,avatar,birth_date,gender,created_at').eq('id', userId).limit(1).single();
+      if (error) throw error;
+      return data || null;
     } catch (err) {
       throw err;
     }
@@ -89,16 +75,8 @@ const AdminUserModel = {
         throw new Error(`Invalid role: ${newRole}`);
       }
 
-      const [result] = await db.execute(
-        `UPDATE users SET role = ? WHERE id = ?`,
-        [newRole, userId]
-      );
-
-      if (result.affectedRows === 0) {
-        return null;
-      }
-
-      // Return updated user record
+      const { data, error } = await supabase.from('users').update({ role: newRole }).eq('id', userId).select('id');
+      if (error) throw error;
       return await this.getUserById(userId);
     } catch (err) {
       throw err;
@@ -112,11 +90,9 @@ const AdminUserModel = {
    */
   async getUserRestaurantCount(userId) {
     try {
-      const [rows] = await db.execute(
-        `SELECT COUNT(*) as count FROM restorans WHERE user_id = ?`,
-        [userId]
-      );
-      return rows[0] ? rows[0].count : 0;
+      const { data, error, count } = await supabase.from('restorans').select('id', { count: 'exact' }).eq('user_id', userId);
+      if (error) throw error;
+      return Number(count ?? (data ? data.length : 0));
     } catch (err) {
       throw err;
     }
@@ -129,39 +105,27 @@ const AdminUserModel = {
    */
   async deleteUser(userId) {
     try {
-      // Use a dedicated connection and proper transaction APIs (mysql2/promise)
-      const conn = await db.getConnection();
-      try {
-        await conn.beginTransaction();
+      // Supabase: perform sequence with best-effort rollback on failure
+      const { data: restaurants, error: fetchErr } = await supabase.from('restorans').select('id').eq('user_id', userId);
+      if (fetchErr) throw fetchErr;
+      const restaurantIds = (restaurants || []).map(r => r.id);
 
-        // Set user_id = NULL for related restaurants instead of cascading delete
-        console.log('[AdminUserModel] deleteUser: running UPDATE restorans');
-        await conn.query(
-          `UPDATE restorans SET user_id = NULL WHERE user_id = ?`,
-          [userId]
-        );
+      const { error: updateErr } = await supabase.from('restorans').update({ user_id: null }).eq('user_id', userId);
+      if (updateErr) throw updateErr;
 
-        // Delete the user
-        console.log('[AdminUserModel] deleteUser: running DELETE users');
-        const [result] = await conn.query(
-          `DELETE FROM users WHERE id = ?`,
-          [userId]
-        );
-
-        if (result.affectedRows === 0) {
-          await conn.rollback();
-          conn.release();
-          return false;
+      const { data: delData, error: delErr } = await supabase.from('users').delete().eq('id', userId).select('id');
+      if (delErr) {
+        // rollback attempt
+        try {
+          if (restaurantIds.length) {
+            await supabase.from('restorans').update({ user_id: userId }).in('id', restaurantIds);
+          }
+        } catch (e) {
+          console.error('Failed rollback after delete error', e);
         }
-
-        await conn.commit();
-        conn.release();
-        return true;
-      } catch (err) {
-        await conn.rollback();
-        conn.release();
-        throw err;
+        throw delErr;
       }
+      return Array.isArray(delData) ? delData.length > 0 : !!delData;
     } catch (err) {
       throw err;
     }

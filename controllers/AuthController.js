@@ -1,9 +1,12 @@
 // RasoSehat-Backend/controllers/AuthController.js
 
 const UserModel = require('../models/UserModel');
+const supabase = require('../supabase/supabaseClient');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const SECRET_KEY = process.env.SECRET_KEY; // Diambil dari .env
+const fs = require('fs');
+const path = require('path');
 
 // Fungsi 1: Register User Baru
 const register = async (req, res) => {
@@ -26,9 +29,8 @@ const register = async (req, res) => {
         if (birth_date) extras.birth_date = birth_date;
         if (gender) extras.gender = gender;
         if (phone) extras.phone = phone;
-        await UserModel.create(name, email, password_hash, normalizedRole, extras);
-        
-        res.status(201).json({ message: 'Registrasi berhasil! Silakan login.' });
+        const newId = await UserModel.create(name, email, password_hash, normalizedRole, extras);
+        return res.status(201).json({ message: 'Registrasi berhasil! Silakan login.', id: newId });
 
     } catch (error) {
         console.error('Error saat register:', error);
@@ -38,7 +40,9 @@ const register = async (req, res) => {
 
 // Fungsi 2: Login dan Mengembalikan Token JWT
 const login = async (req, res) => {
-    const { email, password } = req.body;
+    // Debug: log incoming body to help diagnose empty/invalid payloads
+    console.log('[DEBUG] POST /auth/login body:', req.body);
+    const { email, password } = req.body || {};
     try {
         const user = await UserModel.findByEmail(email);
         if (!user) {
@@ -59,14 +63,14 @@ const login = async (req, res) => {
         );
         
         // Kirim token dan info user ke frontend
-        res.status(200).json({
+        return res.status(200).json({
             message: 'Login berhasil!',
             token,
             user: { id: user.id, name: user.name, email: user.email, role: user.role }
         });
 
     } catch (error) {
-        console.error('Error saat login:', error);
+        console.error('Error saat login:', error && error.stack ? error.stack : error);
         res.status(500).json({ message: 'Login gagal.' });
     }
 };
@@ -102,9 +106,10 @@ const getProfile = async (req, res) => {
         const decoded = jwt.verify(token, SECRET_KEY);
         console.log('[DEBUG] getProfile decoded token:', decoded);
         const user = await UserModel.findById(decoded.id);
-        console.log('[DEBUG] getProfile db user:', user);
         if (!user) return res.status(404).json({ message: 'User tidak ditemukan.' });
-        return res.status(200).json({ data: user });
+        // sanitize: do not include password
+        const { password, ...sanitized } = user;
+        return res.status(200).json({ data: sanitized });
     } catch (error) {
         console.error('getProfile error', error);
         return res.status(500).json({ message: 'Gagal mengambil profil.' });
@@ -128,8 +133,8 @@ const updateProfile = async (req, res) => {
         if (!Object.keys(fields).length) return res.status(400).json({ message: 'Tidak ada data untuk diupdate.' });
         await UserModel.updateById(decoded.id, fields);
         const updated = await UserModel.findById(decoded.id);
-        console.log('[DEBUG] updateProfile updated user:', updated);
-        return res.status(200).json({ message: 'Profil diperbarui.', data: updated });
+        const { password, ...sanitized } = updated || {};
+        return res.status(200).json({ message: 'Profil diperbarui.', data: sanitized });
     } catch (error) {
         console.error('updateProfile error', error);
         return res.status(500).json({ message: 'Gagal mengupdate profil.' });
@@ -143,14 +148,50 @@ const uploadAvatar = async (req, res) => {
         const token = authHeader.replace(/^(Bearer )/i, '');
         if (!token) return res.status(401).json({ message: 'Token tidak ditemukan.' });
         const decoded = jwt.verify(token, SECRET_KEY);
-        console.log('[DEBUG] uploadAvatar decoded token:', decoded);
-        if (!req.file) return res.status(400).json({ message: 'File tidak ditemukan.' });
-        // Build public path for avatar (serve via /uploads)
-        const avatarPath = `/uploads/users/${req.file.filename}`;
-        await UserModel.setAvatar(decoded.id, avatarPath);
-        const updated = await UserModel.findById(decoded.id);
-        console.log('[DEBUG] uploadAvatar updated user:', updated);
-        return res.status(200).json({ message: 'Avatar terunggah.', avatar: avatarPath, data: updated });
+                console.log('[DEBUG] uploadAvatar decoded token:', decoded);
+                if (!req.file) return res.status(400).json({ message: 'File tidak ditemukan.' });
+
+                // Upload to Supabase Storage bucket 'avatars' under users/<id>/filename
+                const bucket = process.env.SUPABASE_AVATAR_BUCKET || 'avatars';
+                const localPath = req.file.path;
+                const filename = `${Date.now()}-${req.file.filename}`;
+                const storagePath = `users/${decoded.id}/${filename}`;
+
+                // Read file buffer
+                const buffer = fs.readFileSync(localPath);
+
+                const { data: uploadData, error: uploadError } = await supabase.storage.from(bucket).upload(storagePath, buffer, {
+                    contentType: req.file.mimetype,
+                    upsert: false,
+                });
+
+                // Remove local file regardless
+                try { fs.unlinkSync(localPath); } catch (e) { /* ignore */ }
+
+                if (uploadError) {
+                    console.error('Supabase storage upload error', uploadError);
+                    return res.status(500).json({ message: 'Gagal mengunggah avatar ke storage.' });
+                }
+
+                // Get public URL
+                let publicUrl = null;
+                try {
+                    const { data: publicData, error: publicErr } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+                    if (publicErr) {
+                        console.error('Supabase getPublicUrl error', publicErr);
+                    } else {
+                        publicUrl = publicData?.publicUrl || null;
+                    }
+                } catch (e) {
+                    console.error('Error getting public url for avatar', e);
+                }
+
+                // Persist avatar URL in user's profile
+                const avatarUrlToSave = publicUrl || `/uploads/users/${req.file.filename}`;
+                await UserModel.setAvatar(decoded.id, avatarUrlToSave);
+                const updated = await UserModel.findById(decoded.id);
+                const { password: _p, ...sanitized } = updated || {};
+                return res.status(200).json({ message: 'Avatar terunggah.', avatar: avatarUrlToSave, data: sanitized });
     } catch (error) {
         console.error('uploadAvatar error', error);
         return res.status(500).json({ message: 'Gagal mengunggah avatar.' });

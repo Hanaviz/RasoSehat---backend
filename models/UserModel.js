@@ -1,53 +1,93 @@
-// RasoSehat-Backend/models/UserModel.js
+// RasoSehat-Backend/models/UserModel.js (Supabase-backed)
 
-const db = require('../config/db.js'); // Koneksi DB yang sudah teruji
+const supabase = require('../supabase/supabaseClient');
 const bcrypt = require('bcrypt');
 
 const UserModel = {
-    // Fungsi 1: Mencari User berdasarkan Email
+    // Find user by email
     findByEmail: async (email) => {
-        const query = 'SELECT * FROM users WHERE email = ?';
-        const [rows] = await db.execute(query, [email]);
-        return rows[0]; // Mengembalikan objek user
+        if (!email) return null;
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email)
+            .limit(1)
+            .single();
+        if (error && error.code !== 'PGRST116') {
+            // PGRST116: no rows found — treat as null
+            console.error('Supabase findByEmail error', error);
+        }
+        return data || null;
     },
 
-    // Fungsi 2: Membuat User Baru (Register)
+    // Create a new user record
     create: async (name, email, password_hash, role = 'pembeli', extra = {}) => {
-        // Build dynamic insert to allow optional columns (e.g., birth_date, gender, phone, avatar)
-        const baseCols = ['name', 'email', 'password', 'role'];
-        const baseVals = [name, email, password_hash, role];
-        const extraKeys = Object.keys(extra || {}).filter(k => extra[k] !== undefined && extra[k] !== null);
-        const cols = baseCols.concat(extraKeys);
-        const placeholders = cols.map(_ => '?').join(', ');
-        const query = `INSERT INTO users (${cols.join(', ')}) VALUES (${placeholders})`;
-        const values = baseVals.concat(extraKeys.map(k => extra[k]));
-        const [result] = await db.execute(query, values);
-        return result.insertId;
-    }
-    ,
-    // Fungsi 3: Mencari User berdasarkan ID
+        const payload = {
+            name,
+            email,
+            password: password_hash,
+            role,
+            ...extra,
+        };
+        // If user already exists by email, return existing id (avoid duplicate key errors)
+        try {
+            const { data: existing } = await supabase.from('users').select('id').eq('email', email).limit(1);
+            if (existing && existing.length) return existing[0].id;
+        } catch (e) {
+            // ignore and continue to insert
+        }
+
+        try {
+            const { data, error } = await supabase.from('users').insert(payload).select('id');
+            if (error) throw error;
+            return data && data[0] ? data[0].id : null;
+        } catch (error) {
+            // As a last resort, try to return existing user by email
+            try {
+                const { data: existing2 } = await supabase.from('users').select('id').eq('email', email).limit(1);
+                if (existing2 && existing2.length) return existing2[0].id;
+            } catch (e) { /* fallthrough */ }
+            console.error('Supabase create user error', error);
+            throw error;
+        }
+    },
+
+    // Find by id with normalized fields
     findById: async (id) => {
-        const query = 'SELECT id, name, email, role, birth_date, gender, phone, avatar FROM users WHERE id = ?';
-        const [rows] = await db.execute(query, [id]);
-        return rows[0];
+        if (!id) return null;
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, name, email, role, birth_date, gender, phone, avatar, created_at')
+            .eq('id', id)
+            .limit(1)
+            .single();
+        if (error && error.code !== 'PGRST116') {
+            console.error('Supabase findById error', error);
+        }
+        return data || null;
     },
 
-    // Fungsi 4: Update profil user (update hanya fields yang diberikan)
+    // Update by id — returns number of updated rows (1 on success)
     updateById: async (id, fields) => {
-        const keys = Object.keys(fields);
-        if (!keys.length) return 0;
-        const sets = keys.map(k => `${k} = ?`).join(', ');
-        const values = keys.map(k => fields[k]);
-        const query = `UPDATE users SET ${sets} WHERE id = ?`;
-        const [result] = await db.execute(query, [...values, id]);
-        return result.affectedRows;
+        if (!id) return 0;
+        if (!fields || Object.keys(fields).length === 0) return 0;
+        const { data, error } = await supabase.from('users').update(fields).eq('id', id).select('id');
+        if (error) {
+            console.error('Supabase updateById error', error);
+            throw error;
+        }
+        return Array.isArray(data) ? data.length : (data ? 1 : 0);
     },
 
-    // Fungsi 5: Set avatar path/url
+    // Set avatar field
     setAvatar: async (id, avatarUrl) => {
-        const query = 'UPDATE users SET avatar = ? WHERE id = ?';
-        const [result] = await db.execute(query, [avatarUrl, id]);
-        return result.affectedRows;
+        if (!id) return 0;
+        const { data, error } = await supabase.from('users').update({ avatar: avatarUrl }).eq('id', id).select('id');
+        if (error) {
+            console.error('Supabase setAvatar error', error);
+            throw error;
+        }
+        return Array.isArray(data) ? data.length : (data ? 1 : 0);
     }
 };
 

@@ -1,5 +1,5 @@
 const RestaurantModel = require('../models/RestaurantModel');
-const db = require('../config/db');
+const supabase = require('../supabase/supabaseClient');
 const path = require('path');
 
 // Helper to ensure ownership or admin
@@ -34,7 +34,7 @@ const updateStep2 = async (req, res) => {
     if (!checkOwnership(req.user, existing.user_id)) return res.status(403).json({ success: false, message: 'Akses ditolak: bukan pemilik.' });
     // Extract fields (supporting new columns)
     const {
-      deskripsi, latitude, longitude, no_telepon, jenis_usaha, mapsLatLong,
+      nama_restoran, alamat, deskripsi, latitude, longitude, no_telepon, jenis_usaha, mapsLatLong,
       owner_name, owner_email, phone_admin, operating_hours, sales_channels, social_media,
       store_category, commitment_checked, health_focus, dominant_cooking_method,
       dominant_fat, slug
@@ -65,6 +65,8 @@ const updateStep2 = async (req, res) => {
     const dominantCookingStr = safeStringify(dominant_cooking_method);
 
     const updated = await RestaurantModel.updateStep2(id, {
+      nama_restoran,
+      alamat,
       deskripsi,
       latitude: lat,
       longitude: lng,
@@ -111,6 +113,12 @@ const updateStep3 = async (req, res) => {
     const npwpArr = collectPaths(files.npwp);
     const dokumenArr = collectPaths(files.dokumen_usaha);
 
+    // Profile photo (single file) support: accept field name `foto`
+    let fotoProfileUrl = null;
+    const fotoField = files.foto;
+    if (Array.isArray(fotoField) && fotoField.length) fotoProfileUrl = buildUrl(fotoField[0]);
+    else if (fotoField && fotoField.path) fotoProfileUrl = buildUrl(fotoField);
+
     // If no new uploads for a category, try to reuse existing documents_json or single-file columns
     let existingDocs = null;
     try { existingDocs = existing.documents_json ? JSON.parse(existing.documents_json) : null; } catch (e) { existingDocs = null; }
@@ -127,6 +135,7 @@ const updateStep3 = async (req, res) => {
     const dokumen_usaha_single = finalDokumen.length ? finalDokumen[0] : (existing.dokumen_usaha || null);
 
     const updated = await RestaurantModel.updateStep3(id, {
+      foto: fotoProfileUrl,
       foto_ktp: foto_ktp_single,
       npwp: npwp_single,
       dokumen_usaha: dokumen_usaha_single,
@@ -151,10 +160,7 @@ const submitFinal = async (req, res) => {
     const updated = await RestaurantModel.submitFinal(id);
     // Try to write a verifikasi record for audit trail using expected column names
     try {
-      await db.execute(
-        'INSERT INTO verifikasi (admin_id, tipe_objek, objek_id, status, catatan, tanggal_verifikasi) VALUES (?, ?, ?, ?, ?, NOW())',
-        [null, 'restoran', id, 'pending', 'Pengajuan pendaftaran dikirim']
-      );
+      await supabase.from('verifikasi').insert({ admin_id: null, tipe_objek: 'restoran', objek_id: id, status: 'pending', catatan: 'Pengajuan pendaftaran dikirim', tanggal_verifikasi: new Date().toISOString() });
     } catch (err) {
       // Log and continue — verifikasi table might differ in some environments
       console.warn('Could not insert verifikasi record (non-fatal):', err.message || err);

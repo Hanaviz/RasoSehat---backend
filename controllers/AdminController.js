@@ -1,4 +1,4 @@
-const db = require('../config/db');
+const supabase = require('../supabase/supabaseClient');
 const { sendStoreVerificationEmail } = require('../utils/emailService');
 const { sendStoreVerificationEmailTo } = require('../utils/emailService');
 
@@ -14,18 +14,18 @@ const mapStatus = (status) => {
 const getPendingRestaurants = async (req, res) => {
     try {
         // Return a broad set of columns so admin can review all submitted data including documents_json
-        const [rows] = await db.execute(`
-            SELECT id, user_id, nama_restoran, deskripsi, alamat, no_telepon, jenis_usaha,
-                   owner_name, owner_email, phone_admin, operating_hours, sales_channels, social_media,
-                   store_category, commitment_checked, health_focus, dominant_cooking_method, dominant_fat,
-                   maps_latlong, foto_ktp, npwp, dokumen_usaha, documents_json, status_verifikasi, created_at
-            FROM restorans
-            WHERE status_verifikasi = 'pending' OR status_verifikasi = 'menunggu'
-            ORDER BY created_at DESC
-        `);
+        const { data: rows, error } = await supabase.from('restorans')
+            .select('*')
+            .in('status_verifikasi', ['pending','menunggu'])
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('getPendingRestaurants supabase error', error);
+            throw error;
+        }
 
         // Normalize rows to a consistent shape expected by the frontend
-        const normalized = rows.map(r => {
+        const normalized = rows.map(row => {
             const safeParse = (v, fallback) => {
                 if (v === null || v === undefined) return fallback;
                 if (typeof v === 'string') {
@@ -34,9 +34,9 @@ const getPendingRestaurants = async (req, res) => {
                 return v;
             };
 
-            const healthFocus = safeParse(r.health_focus, []);
-            const cookingMethods = safeParse(r.dominant_cooking_method, []);
-            const docsObj = safeParse(r.documents_json, { foto_ktp: [], npwp: [], dokumen_usaha: [] });
+            const healthFocus = safeParse(row.health_focus, []);
+            const cookingMethods = safeParse(row.dominant_cooking_method, []);
+            const docsObj = safeParse(row.documents_json, { foto_ktp: [], npwp: [], dokumen_usaha: [] });
 
             // aggregate documents into a single array (preserve order and fallbacks)
             const docs = [];
@@ -46,48 +46,48 @@ const getPendingRestaurants = async (req, res) => {
 
             // fallback to single-file columns if documents array empty
             if (!docs.length) {
-                if (r.foto_ktp) docs.push(r.foto_ktp);
-                if (r.dokumen_usaha) docs.push(r.dokumen_usaha);
-                if (r.npwp) docs.push(r.npwp);
+                if (row.foto_ktp) docs.push(row.foto_ktp);
+                if (row.dokumen_usaha) docs.push(row.dokumen_usaha);
+                if (row.npwp) docs.push(row.npwp);
             }
 
             return {
-                id: r.id,
-                user_id: r.user_id,
-                nama_restoran: r.nama_restoran,
-                name: r.nama_restoran,
-                deskripsi: r.deskripsi,
-                concept: r.deskripsi,
-                alamat: r.alamat,
-                address: r.alamat,
-                no_telepon: r.no_telepon,
-                phone_admin: r.phone_admin,
-                owner_name: r.owner_name,
-                owner_email: r.owner_email,
-                owner: r.owner_name || r.user_id,
-                ownerEmail: r.owner_email,
-                operating_hours: r.operating_hours,
-                openHours: r.operating_hours,
-                sales_channels: r.sales_channels,
-                social_media: r.social_media,
-                store_category: r.store_category,
-                storeCategory: r.store_category,
-                commitment_checked: r.commitment_checked,
+                id: row.id,
+                user_id: row.user_id,
+                nama_restoran: row.nama_restoran,
+                name: row.nama_restoran,
+                deskripsi: row.deskripsi,
+                concept: row.deskripsi,
+                alamat: row.alamat,
+                address: row.alamat,
+                no_telepon: row.no_telepon,
+                phone_admin: row.phone_admin,
+                owner_name: row.owner_name,
+                owner_email: row.owner_email,
+                owner: row.owner_name || row.user_id,
+                ownerEmail: row.owner_email,
+                operating_hours: row.operating_hours,
+                openHours: row.operating_hours,
+                sales_channels: row.sales_channels,
+                social_media: row.social_media,
+                store_category: row.store_category,
+                storeCategory: row.store_category,
+                commitment_checked: row.commitment_checked,
                 health_focus: healthFocus,
                 healthFocus: healthFocus,
                 dominant_cooking_method: cookingMethods,
                 dominantCookingMethod: cookingMethods,
-                dominant_fat: r.dominant_fat,
-                dominantFat: r.dominant_fat,
-                maps_latlong: r.maps_latlong,
-                mapsLatLong: r.maps_latlong,
+                dominant_fat: row.dominant_fat,
+                dominantFat: row.dominant_fat,
+                maps_latlong: row.maps_latlong,
+                mapsLatLong: row.maps_latlong,
                 documents_json: docsObj,
                 documents: docs,
-                foto_ktp: r.foto_ktp,
-                npwp: r.npwp,
-                dokumen_usaha: r.dokumen_usaha,
-                status_verifikasi: r.status_verifikasi,
-                created_at: r.created_at
+                foto_ktp: row.foto_ktp,
+                npwp: row.npwp,
+                dokumen_usaha: row.dokumen_usaha,
+                status_verifikasi: row.status_verifikasi,
+                created_at: row.created_at
             };
         });
 
@@ -103,19 +103,25 @@ const NotificationModel = require('../models/NotificationModel');
 
 const getPendingMenus = async (req, res) => {
     try {
-        const [rows] = await db.execute(`
-            SELECT m.id, m.nama_menu, m.deskripsi, m.bahan_baku, m.metode_masak, m.diet_claims, 
-                   m.kalori, m.protein, m.gula, m.lemak, m.serat, m.lemak_jenuh, m.harga, m.foto, 
-                   m.status_verifikasi, m.catatan_admin, m.restoran_id, r.nama_restoran
-            FROM menu_makanan m
-            JOIN restorans r ON m.restoran_id = r.id
-            WHERE m.status_verifikasi = 'pending' OR m.status_verifikasi = 'menunggu'
-        `);
-        // Parse diet_claims if it's JSON
-        const processedRows = rows.map(row => ({
+        // Fetch pending menus; join with restaurans via model to keep compatibility
+        const { data: menus, error } = await supabase.from('menu_makanan').select('*').in('status_verifikasi', ['pending','menunggu']);
+        if (error) { console.error('getPendingMenus supabase error', error); throw error; }
+
+        const processedRows = (menus || []).map(row => ({
             ...row,
-            diet_claims: row.diet_claims ? JSON.parse(row.diet_claims) : []
+            diet_claims: row.diet_claims ? (typeof row.diet_claims === 'string' ? JSON.parse(row.diet_claims) : row.diet_claims) : []
         }));
+
+        // Attach restaurant name where possible (best-effort) to preserve previous shape
+        for (const m of processedRows) {
+            try {
+                if (m.restoran_id) {
+                    const r = await RestaurantModel.findById(m.restoran_id);
+                    m.nama_restoran = r ? r.nama_restoran : null;
+                }
+            } catch (e) { /* non-fatal */ }
+        }
+
         return res.status(200).json(processedRows);
     } catch (err) {
         console.error('getPendingMenus error', err);
@@ -130,13 +136,14 @@ const getActiveRestaurants = async (req, res) => {
         const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
         const offset = (page - 1) * perPage;
 
-        const [rows] = await db.execute(`
-            SELECT id, user_id, nama_restoran, deskripsi, alamat, no_telepon, jenis_usaha, owner_name, owner_email, status_verifikasi, created_at, updated_at
-            FROM restorans
-            WHERE status_verifikasi = 'disetujui'
-            ORDER BY updated_at DESC
-            LIMIT ? OFFSET ?
-        `, [perPage, offset]);
+                const fromIndex = offset;
+                const toIndex = offset + perPage - 1;
+                const { data: rows, error } = await supabase.from('restorans')
+                    .select('*')
+                    .eq('status_verifikasi', 'disetujui')
+                    .order('updated_at', { ascending: false })
+                    .range(fromIndex, toIndex);
+                if (error) { console.error('getActiveRestaurants supabase error', error); throw error; }
 
         // return simple paging metadata
         return res.status(200).json({ data: rows, page, per_page: perPage });
@@ -152,39 +159,80 @@ const getRestaurantVerificationHistory = async (req, res) => {
         const page = Math.max(1, Number(req.query.page) || 1);
         const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
         const offset = (page - 1) * perPage;
-        // Try the modern schema first (target_type/target_id/note/created_at)
-        let rows;
-        try {
-            const q = `
-                SELECT v.id, v.target_id AS restoran_id, v.admin_id, u.name AS admin_name, v.status, v.note AS catatan, v.created_at AS verified_at, r.nama_restoran
-                FROM verifikasi v
-                LEFT JOIN restorans r ON v.target_id = r.id
-                LEFT JOIN users u ON v.admin_id = u.id
-                WHERE v.target_type = 'restoran'
-                ORDER BY v.created_at DESC
-                LIMIT ? OFFSET ?
-            `;
-            const result = await db.execute(q, [perPage, offset]);
-            rows = result[0];
-        } catch (primaryErr) {
-            // Fallback for legacy schema: tipe_objek/objek_id/catatan/tanggal_verifikasi
-            console.warn('[getRestaurantVerificationHistory] primary query failed, trying legacy schema fallback:', primaryErr && primaryErr.message ? primaryErr.message : primaryErr);
-            const qLegacy = `
-                SELECT v.id, v.objek_id AS restoran_id, v.admin_id, u.name AS admin_name, v.status, v.catatan AS catatan, v.tanggal_verifikasi AS verified_at, r.nama_restoran
-                FROM verifikasi v
-                LEFT JOIN restorans r ON v.objek_id = r.id
-                LEFT JOIN users u ON v.admin_id = u.id
-                WHERE v.tipe_objek = 'restoran'
-                ORDER BY v.tanggal_verifikasi DESC
-                LIMIT ? OFFSET ?
-            `;
-            const legacyResult = await db.execute(qLegacy, [perPage, offset]);
-            rows = legacyResult[0];
+        const fromIndex = offset;
+        const toIndex = offset + perPage - 1;
+                // Best-effort: fetch verifikasi rows and enrich them with restaurant and admin name
+                // TODO: If performance is a concern, consider adding views or server-side RPC to perform joins.
+                console.debug(`[getRestaurantVerificationHistory] params page=${page} per_page=${perPage} range=${fromIndex}-${toIndex}`);
+                let verRows, vError;
+                try {
+                    // Some installations may not have a `target_type` column. Fetch a page of verifikasi rows
+                    // and do best-effort filtering in JS by checking a few possible column names.
+                    const resp = await supabase.from('verifikasi')
+                      .select('*')
+                      .order('created_at', { ascending: false })
+                      .range(fromIndex, toIndex);
+                    verRows = resp.data;
+                    vError = resp.error;
+                } catch (e) {
+                    console.error('[getRestaurantVerificationHistory] supabase call threw', e && e.message ? e.message : e);
+                    return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran (supabase call threw).' });
+                }
+                if (vError) {
+                    console.error('getRestaurantVerificationHistory supabase fetch error', vError);
+                    return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran.' });
+                }
+
+        const enriched = [];
+        // Normalize and filter rows: some DBs store the target kind in `target_type`, others may not.
+        const possibleTypeKeys = ['target_type','tipe_target','jenis_target','type','target'];
+        const possibleTargetIdKeys = ['target_id','objek_id','object_id','id_objek','targetid'];
+        const filteredVerRows = (verRows || []).filter(v => {
+            // attempt to determine if this row refers to a restoran
+            const typeVal = possibleTypeKeys.map(k => v && v[k]).find(Boolean);
+            // if known type exists, match typical values; otherwise attempt to infer from other fields
+            if (typeVal) {
+                const tv = String(typeVal).toLowerCase();
+                return tv.includes('restor') || tv.includes('restoran') || tv.includes('store') || tv.includes('toko');
+            }
+            // fallback: if target id exists and there is no explicit type, keep and attempt enrichment
+            const tid = possibleTargetIdKeys.map(k => v && v[k]).find(id => typeof id !== 'undefined' && id !== null);
+            return typeof tid !== 'undefined' && tid !== null;
+        });
+
+        for (const v of filteredVerRows) {
+            const restoranId = possibleTargetIdKeys.map(k => v && v[k]).find(id => typeof id !== 'undefined' && id !== null) || null;
+            let nama_restoran = null;
+            if (restoranId) {
+                try {
+                    const r = await RestaurantModel.findById(restoranId);
+                    nama_restoran = r ? r.nama_restoran : null;
+                } catch (e) { /* non-fatal */ }
+            }
+
+            let admin_name = null;
+            if (v.admin_id) {
+                try {
+                    const { data: urows } = await supabase.from('users').select('name').eq('id', v.admin_id).limit(1);
+                    if (urows && urows.length) admin_name = urows[0].name;
+                } catch (e) { /* non-fatal */ }
+            }
+
+            enriched.push({
+                id: v.id,
+                restoran_id: restoranId,
+                admin_id: v.admin_id,
+                admin_name,
+                status: v.status,
+                catatan: v.note || v.catatan || null,
+                verified_at: v.created_at || v.tanggal_verifikasi || null,
+                nama_restoran
+            });
         }
 
-        return res.status(200).json({ data: rows, page, per_page: perPage });
+        return res.status(200).json({ data: enriched, page, per_page: perPage });
     } catch (err) {
-        console.error('getRestaurantVerificationHistory error', err);
+        console.error('getRestaurantVerificationHistory error', err && err.stack ? err.stack : err);
         return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran.' });
     }
 };
@@ -196,15 +244,25 @@ const getActiveMenus = async (req, res) => {
         const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
         const offset = (page - 1) * perPage;
 
-        const q = `
-            SELECT m.id, m.nama_menu, m.harga, m.foto, m.slug, m.kalori, m.protein, m.gula, m.lemak, m.serat, m.lemak_jenuh, r.nama_restoran
-            FROM menu_makanan m
-            JOIN restorans r ON m.restoran_id = r.id
-            WHERE m.status_verifikasi = 'disetujui'
-            ORDER BY m.updated_at DESC
-            LIMIT ? OFFSET ?
-        `;
-        const [rows] = await db.execute(q, [perPage, offset]);
+        // Fetch menus and attach restaurant name where possible
+        const fromIndex = offset;
+        const toIndex = offset + perPage - 1;
+        const { data: menus, error: menusErr } = await supabase.from('menu_makanan')
+          .select('*')
+          .eq('status_verifikasi', 'disetujui')
+          .order('updated_at', { ascending: false })
+          .range(fromIndex, toIndex);
+        if (menusErr) { console.error('getActiveMenus supabase error', menusErr); throw menusErr; }
+
+        const rows = menus || [];
+        for (const m of rows) {
+            try {
+                if (m.restoran_id) {
+                    const r = await RestaurantModel.findById(m.restoran_id);
+                    m.nama_restoran = r ? r.nama_restoran : null;
+                }
+            } catch (e) { /* non-fatal */ }
+        }
         return res.status(200).json({ data: rows, page, per_page: perPage });
     } catch (err) {
         console.error('getActiveMenus error', err);
@@ -218,42 +276,83 @@ const getMenuVerificationHistory = async (req, res) => {
         const page = Math.max(1, Number(req.query.page) || 1);
         const perPage = Math.min(100, Math.max(5, Number(req.query.per_page) || 20));
         const offset = (page - 1) * perPage;
-        // Try modern schema first
-        let rows;
-        try {
-            const q = `
-                SELECT v.id, v.target_id AS menu_id, v.admin_id, u.name AS admin_name, v.status, v.note AS catatan, v.created_at AS verified_at,
-                       m.nama_menu, r.nama_restoran
-                FROM verifikasi v
-                LEFT JOIN menu_makanan m ON v.target_id = m.id
-                LEFT JOIN restorans r ON m.restoran_id = r.id
-                LEFT JOIN users u ON v.admin_id = u.id
-                WHERE v.target_type = 'menu'
-                ORDER BY v.created_at DESC
-                LIMIT ? OFFSET ?
-            `;
-            const result = await db.execute(q, [perPage, offset]);
-            rows = result[0];
-        } catch (primaryErr) {
-            console.warn('[getMenuVerificationHistory] primary query failed, trying legacy schema fallback:', primaryErr && primaryErr.message ? primaryErr.message : primaryErr);
-            const qLegacy = `
-                SELECT v.id, v.objek_id AS menu_id, v.admin_id, u.name AS admin_name, v.status, v.catatan AS catatan, v.tanggal_verifikasi AS verified_at,
-                       m.nama_menu, r.nama_restoran
-                FROM verifikasi v
-                LEFT JOIN menu_makanan m ON v.objek_id = m.id
-                LEFT JOIN restorans r ON m.restoran_id = r.id
-                LEFT JOIN users u ON v.admin_id = u.id
-                WHERE v.tipe_objek = 'menu'
-                ORDER BY v.tanggal_verifikasi DESC
-                LIMIT ? OFFSET ?
-            `;
-            const legacyResult = await db.execute(qLegacy, [perPage, offset]);
-            rows = legacyResult[0];
+        // Best-effort: fetch verifikasi rows for menus and enrich with menu and restaurant names
+        const fromIndex = offset;
+        const toIndex = offset + perPage - 1;
+                console.debug(`[getMenuVerificationHistory] params page=${page} per_page=${perPage} range=${fromIndex}-${toIndex}`);
+                let verRows, vError;
+                try {
+                    // Fetch verifikasi rows without filtering (some DB schemas lack target_type)
+                    const resp = await supabase.from('verifikasi')
+                        .select('*')
+                        .order('created_at', { ascending: false })
+                        .range(fromIndex, toIndex);
+                    verRows = resp.data;
+                    vError = resp.error;
+                } catch (e) {
+                    console.error('[getMenuVerificationHistory] supabase call threw', e && e.message ? e.message : e);
+                    return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi menu (supabase call threw).' });
+                }
+                if (vError) {
+                    console.error('getMenuVerificationHistory supabase fetch error', vError);
+                    return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi menu.' });
+                }
+
+            const enriched = [];
+            // Filter rows that look like menu verifications
+            const possibleTypeKeys = ['target_type','tipe_target','jenis_target','type','target'];
+            const possibleTargetIdKeys = ['target_id','objek_id','object_id','id_objek','targetid'];
+            const filteredVerRows = (verRows || []).filter(v => {
+                const typeVal = possibleTypeKeys.map(k => v && v[k]).find(Boolean);
+                if (typeVal) {
+                const tv = String(typeVal).toLowerCase();
+                return tv.includes('menu') || tv.includes('makanan') || tv.includes('dish');
+                }
+                const tid = possibleTargetIdKeys.map(k => v && v[k]).find(id => typeof id !== 'undefined' && id !== null);
+                return typeof tid !== 'undefined' && tid !== null;
+            });
+
+            for (const v of filteredVerRows) {
+            const menuId = v.target_id || v.objek_id || null;
+            let nama_menu = null;
+            let nama_restoran = null;
+            if (menuId) {
+                try {
+                    const { data: mrows } = await supabase.from('menu_makanan').select('id,nama_menu,restoran_id').eq('id', menuId).limit(1);
+                    if (mrows && mrows.length) {
+                        nama_menu = mrows[0].nama_menu;
+                        if (mrows[0].restoran_id) {
+                            const r = await RestaurantModel.findById(mrows[0].restoran_id);
+                            nama_restoran = r ? r.nama_restoran : null;
+                        }
+                    }
+                } catch (e) { /* non-fatal */ }
+            }
+
+            let admin_name = null;
+            if (v.admin_id) {
+                try {
+                    const { data: urows } = await supabase.from('users').select('name').eq('id', v.admin_id).limit(1);
+                    if (urows && urows.length) admin_name = urows[0].name;
+                } catch (e) { /* non-fatal */ }
+            }
+
+            enriched.push({
+                id: v.id,
+                menu_id: menuId,
+                admin_id: v.admin_id,
+                admin_name,
+                status: v.status,
+                catatan: v.note || v.catatan || null,
+                verified_at: v.created_at || v.tanggal_verifikasi || null,
+                nama_menu,
+                nama_restoran
+            });
         }
 
-        return res.status(200).json({ data: rows, page, per_page: perPage });
+        return res.status(200).json({ data: enriched, page, per_page: perPage });
     } catch (err) {
-        console.error('getMenuVerificationHistory error', err);
+        console.error('getMenuVerificationHistory error', err && err.stack ? err.stack : err);
         return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi menu.' });
     }
 };
@@ -268,22 +367,22 @@ const setOwnerRoleToPenjual = async (restaurant) => {
         if (!ownerId) {
             const ownerEmail = restaurant.owner_email || restaurant.email || restaurant.ownerEmail || null;
             if (ownerEmail) {
-                const [urows] = await db.execute('SELECT id, role FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
-                if (urows && urows[0] && urows[0].id) ownerId = urows[0].id;
+                const { data: urows } = await supabase.from('users').select('id,role').eq('email', ownerEmail).limit(1);
+                if (urows && urows.length) ownerId = urows[0].id;
             }
         }
 
         // Try phone number
         if (!ownerId && (restaurant.no_telepon || restaurant.phone_admin || restaurant.contact)) {
             const phone = restaurant.no_telepon || restaurant.phone_admin || restaurant.contact;
-            const [urows] = await db.execute('SELECT id, role FROM users WHERE phone = ? LIMIT 1', [phone]);
-            if (urows && urows[0] && urows[0].id) ownerId = urows[0].id;
+            const { data: urows } = await supabase.from('users').select('id,role').eq('phone', phone).limit(1);
+            if (urows && urows.length) ownerId = urows[0].id;
         }
 
         // Try owner name (exact match fallback)
         if (!ownerId && restaurant.owner_name) {
-            const [urows] = await db.execute('SELECT id, role FROM users WHERE name = ? LIMIT 1', [restaurant.owner_name]);
-            if (urows && urows[0] && urows[0].id) ownerId = urows[0].id;
+            const { data: urows } = await supabase.from('users').select('id,role').eq('name', restaurant.owner_name).limit(1);
+            if (urows && urows.length) ownerId = urows[0].id;
         }
 
         if (!ownerId) {
@@ -292,17 +391,17 @@ const setOwnerRoleToPenjual = async (restaurant) => {
         }
 
         // Only update if not already 'penjual'
-        const [cur] = await db.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [ownerId]);
-        const currentRole = cur && cur[0] ? cur[0].role : null;
+        const { data: curRows } = await supabase.from('users').select('role').eq('id', ownerId).limit(1);
+        const currentRole = curRows && curRows.length ? curRows[0].role : null;
         if (currentRole !== 'penjual') {
-            await db.execute('UPDATE users SET role = ? WHERE id = ?', ['penjual', ownerId]);
+            await supabase.from('users').update({ role: 'penjual' }).eq('id', ownerId);
             console.log(`[setOwnerRoleToPenjual] user ${ownerId} role set to 'penjual'`);
         }
 
         // Ensure restaurant row links to user_id if possible
         if (restaurant.id && Number(restaurant.user_id || 0) !== Number(ownerId)) {
             try {
-                await db.execute('UPDATE restorans SET user_id = ? WHERE id = ?', [ownerId, restaurant.id]);
+                await supabase.from('restorans').update({ user_id: ownerId }).eq('id', restaurant.id);
             } catch (linkErr) {
                 console.warn('[setOwnerRoleToPenjual] could not link restaurant to owner user_id (non-fatal):', linkErr && linkErr.message ? linkErr.message : linkErr);
             }
@@ -317,104 +416,63 @@ const setOwnerRoleToPenjual = async (restaurant) => {
 
 const verifyRestaurant = async (req, res) => {
     const { id } = req.params;
-    const { status, note } = req.body; // expected: 'approved' | 'rejected' (or Indonesian equivalents)
+    const { status, note } = req.body;
 
     const dbStatus = mapStatus(status);
-    if (!dbStatus) {
-        return res.status(400).json({ message: 'Status tidak valid. Gunakan "approved" atau "rejected".' });
-    }
+    if (!dbStatus) return res.status(400).json({ message: 'Status tidak valid. Gunakan "approved" atau "rejected".' });
 
     try {
-        // Attempt to update restorans; include admin_note if column exists (non-fatal otherwise)
-        try {
-            const [result] = await db.execute('UPDATE restorans SET status_verifikasi = ?, admin_note = ?, verified_at = NOW() WHERE id = ?', [dbStatus, note || null, id]);
-            if (result.affectedRows === 0) {
-                // fallback: maybe no admin_note column; try simpler update
-                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
-                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+        // Try to update restaurant status (best-effort with fallback)
+        const updatePayload = { status_verifikasi: dbStatus, updated_at: new Date().toISOString() };
+        if (typeof note !== 'undefined') updatePayload.admin_note = note || null;
+
+        const { data: upd, error: updErr } = await supabase.from('restorans').update(updatePayload).eq('id', id).select('id');
+        if (updErr) {
+            // fallback to minimal update
+            const { data: upd2, error: upd2Err } = await supabase.from('restorans').update({ status_verifikasi: dbStatus }).eq('id', id).select('id');
+            if (upd2Err || !upd2 || upd2.length === 0) {
+                return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
             }
-        } catch (e) {
-            // Try fallback update if admin_note/verified_at do not exist
-            try {
-                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
-                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
-            } catch (e2) {
-                console.error('verifyRestaurant update fatal error', e2);
-                return res.status(500).json({ message: 'Gagal memperbarui status restoran.' });
+        } else {
+            if (!upd || (Array.isArray(upd) && upd.length === 0)) {
+                return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
             }
         }
 
-        // Insert a verifikasi record for audit trail; non-fatal if table/columns differ
+        // Audit log (non-fatal)
         try {
             const adminId = req.user && req.user.id ? req.user.id : null;
-            await db.execute('INSERT INTO verifikasi (target_type, target_id, user_id, admin_id, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-                ['restoran', id, null, adminId, dbStatus, note || null]
-            );
-        } catch (e) {
-            console.warn('Could not insert verifikasi log for restaurant (non-fatal):', e.message || e);
-        }
+            await supabase.from('verifikasi').insert({ target_type: 'restoran', target_id: id, user_id: null, admin_id: adminId, status: dbStatus, note: note || null, created_at: new Date().toISOString() });
+        } catch (e) { /* non-fatal */ }
 
-        // Fetch restaurant to include in response and to send email
-        const [rows] = await db.execute('SELECT * FROM restorans WHERE id = ?', [id]);
-        const restaurant = rows && rows[0] ? rows[0] : null;
+        // Fetch restaurant row via model
+        const restaurant = await RestaurantModel.findById(id);
 
-        // If restaurant approved, try to set owner's user.role to 'penjual' (best-effort)
+        // Best-effort: set owner role
         if (dbStatus === 'disetujui' && restaurant) {
-            try {
-                await setOwnerRoleToPenjual(restaurant);
-            } catch (roleErr) {
-                console.warn('[verifyRestaurant] failed to set user role to penjual (non-fatal):', roleErr && roleErr.message ? roleErr.message : roleErr);
-            }
+            try { await setOwnerRoleToPenjual(restaurant); } catch (e) { /* non-fatal */ }
         }
-        // Send notification email to owner (best-effort)
+
+        // Notify owner (notification + email) — best-effort
         try {
             const ownerEmail = restaurant && (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) ? (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) : null;
-            console.log('[verifyRestaurant] will notify owner:', ownerEmail, 'status:', dbStatus, 'notePresent:', !!note);
             if (ownerEmail) {
-                    // Insert internal notification (preferred) and attempt email as best-effort
-                    try {
-                        // Prefer explicit owner id from restaurant row when available
-                        const ownerIdFromRow = restaurant && (restaurant.user_id || restaurant.owner_user_id) ? (restaurant.user_id || restaurant.owner_user_id) : null;
-                        let ownerId = ownerIdFromRow;
-                        if (!ownerId && ownerEmail) {
-                            const [urows] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
-                            ownerId = (urows && urows[0] && urows[0].id) ? urows[0].id : null;
-                        }
-                        // If we found an ownerId but the restaurant row is not linked to it, attempt to link the restaurant to the user
-                        if (ownerId && restaurant && Number(restaurant.user_id) !== Number(ownerId)) {
-                            try {
-                                await db.execute('UPDATE restorans SET user_id = ? WHERE id = ?', [ownerId, restaurant.id]);
-                                restaurant.user_id = ownerId;
-                            } catch (linkErr) {
-                                console.warn('[patchVerifyRestaurant] could not link restaurant to owner user_id (non-fatal):', linkErr && linkErr.message ? linkErr.message : linkErr);
-                            }
-                        }
-                        // If we found an ownerId but the restaurant row is not linked to it, attempt to link the restaurant to the user
-                        if (ownerId && restaurant && Number(restaurant.user_id) !== Number(ownerId)) {
-                            try {
-                                await db.execute('UPDATE restorans SET user_id = ? WHERE id = ?', [ownerId, restaurant.id]);
-                                // reflect in local object for subsequent operations
-                                restaurant.user_id = ownerId;
-                            } catch (linkErr) {
-                                console.warn('[verifyRestaurant] could not link restaurant to owner user_id (non-fatal):', linkErr && linkErr.message ? linkErr.message : linkErr);
-                            }
-                        }
-                        const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
-                        const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
-                        const payload = { restaurant_id: restaurant.id, status: dbStatus, note: note || null };
-                        await NotificationModel.createNotification({ user_id: ownerId, recipient_email: ownerEmail, type: dbStatus === 'disetujui' ? 'success' : 'warning', title, message, data: payload });
-                    } catch (notifErr) {
-                        console.warn('[verifyRestaurant] could not insert notification (non-fatal):', notifErr && notifErr.message ? notifErr.message : notifErr);
-                    }
-                    // Try sending email as optional fallback
-                    await sendStoreVerificationEmail(restaurant, ownerEmail, dbStatus, note || '');
-                    console.log('[verifyRestaurant] email send attempted to', ownerEmail);
-            } else {
-                console.warn('[verifyRestaurant] owner email not found in restaurant row, skipping email');
+                let ownerId = null;
+                try {
+                    const { data: urows } = await supabase.from('users').select('id').eq('email', ownerEmail).limit(1);
+                    ownerId = (urows && urows.length && urows[0] && urows[0].id) ? urows[0].id : null;
+                } catch (e) { /* ignore */ }
+
+                try {
+                    const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
+                    const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
+                    const payload = { restaurant_id: restaurant && restaurant.id, status: dbStatus, note: note || null };
+                    await NotificationModel.createNotification({ user_id: ownerId, recipient_email: ownerEmail, type: dbStatus === 'disetujui' ? 'success' : 'warning', title, message, data: payload });
+                } catch (e) { /* ignore */ }
+
+                try { await sendStoreVerificationEmail(restaurant, ownerEmail, dbStatus, note || ''); } catch (e) { /* ignore */ }
             }
-        } catch (emailErr) {
-            console.error('[verifyRestaurant] failed to send email (non-fatal):', emailErr && emailErr.message ? emailErr.message : emailErr);
-        }
+        } catch (e) { /* ignore */ }
 
         return res.status(200).json({ message: 'Status restoran diperbarui.', restaurant });
     } catch (err) {
@@ -433,21 +491,20 @@ const verifyMenu = async (req, res) => {
     }
 
     try {
-        const [result] = await db.execute('UPDATE menu_makanan SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'Menu tidak ditemukan.' });
+        const { data: upd, error: updErr } = await supabase.from('menu_makanan').update({ status_verifikasi: dbStatus, updated_at: new Date().toISOString() }).eq('id', id).select('id');
+        if (updErr || !upd || upd.length === 0) return res.status(404).json({ message: 'Menu tidak ditemukan.' });
 
-        // Log verifikasi action for menu
+        // Log verifikasi action for menu (non-fatal)
         try {
             const adminId = req.user && req.user.id ? req.user.id : null;
-            await db.execute('INSERT INTO verifikasi (target_type, target_id, user_id, admin_id, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-                ['menu', id, null, adminId, dbStatus, `Menu status updated by admin ${adminId}`]
-            );
+            await supabase.from('verifikasi').insert({ target_type: 'menu', target_id: id, user_id: null, admin_id: adminId, status: dbStatus, note: `Menu status updated by admin ${adminId}`, created_at: new Date().toISOString() });
         } catch (e) {
             console.warn('Could not insert verifikasi log for menu (non-fatal):', e.message || e);
         }
 
-        const [rows] = await db.execute('SELECT id, nama_menu, status_verifikasi, restoran_id FROM menu_makanan WHERE id = ?', [id]);
-        return res.status(200).json({ message: 'Status menu diperbarui.', menu: rows[0] });
+        const { data: menuRows } = await supabase.from('menu_makanan').select('id,nama_menu,status_verifikasi,restoran_id').eq('id', id).limit(1);
+        const menu = menuRows && menuRows.length ? menuRows[0] : null;
+        return res.status(200).json({ message: 'Status menu diperbarui.', menu });
     } catch (err) {
         console.error('verifyMenu error', err);
         return res.status(500).json({ message: 'Gagal memperbarui status menu.' });
@@ -464,77 +521,50 @@ const patchVerifyRestaurant = async (req, res) => {
     if (!dbStatus) return res.status(400).json({ message: 'Status tidak valid. Gunakan "approved" atau "rejected".' });
 
     try {
-        // Update restorans with admin note and verified timestamp (best-effort)
-        try {
-            const [r] = await db.execute('UPDATE restorans SET status_verifikasi = ?, admin_note = ?, verified_at = NOW() WHERE id = ?', [dbStatus, note || null, id]);
-            if (r.affectedRows === 0) {
-                // fallback to simple update
-                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
-                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
-            }
-        } catch (e) {
-            // try fallback
-            try {
-                const [r2] = await db.execute('UPDATE restorans SET status_verifikasi = ? WHERE id = ?', [dbStatus, id]);
-                if (r2.affectedRows === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
-            } catch (ee) {
-                console.error('patchVerifyRestaurant update failed', ee);
-                return res.status(500).json({ message: 'Gagal memperbarui status restoran.' });
-            }
+        // Update status (best-effort)
+        const updatePayload = { status_verifikasi: dbStatus, updated_at: new Date().toISOString() };
+        if (typeof note !== 'undefined') updatePayload.admin_note = note || null;
+
+        const { data: upd, error: updErr } = await supabase.from('restorans').update(updatePayload).eq('id', id).select('id');
+        if (updErr) {
+            const { data: upd2, error: upd2Err } = await supabase.from('restorans').update({ status_verifikasi: dbStatus }).eq('id', id).select('id');
+            if (upd2Err || !upd2 || upd2.length === 0) return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
+        } else if (!upd || (Array.isArray(upd) && upd.length === 0)) {
+            return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
         }
 
-        // Audit log (non-fatal)
+        // Audit log
         try {
             const adminId = req.user && req.user.id ? req.user.id : null;
-            await db.execute('INSERT INTO verifikasi (target_type, target_id, user_id, admin_id, status, note, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())',
-                ['restoran', id, null, adminId, dbStatus, note || null]
-            );
-        } catch (e) {
-            console.warn('patchVerifyRestaurant: could not insert verifikasi audit (non-fatal):', e && e.message ? e.message : e);
-        }
+            await supabase.from('verifikasi').insert({ target_type: 'restoran', target_id: id, user_id: null, admin_id: adminId, status: dbStatus, note: note || null, created_at: new Date().toISOString() });
+        } catch (e) { /* non-fatal */ }
 
-        // Fetch restaurant row to include in response
-        const [rows] = await db.execute('SELECT * FROM restorans WHERE id = ?', [id]);
-        const restaurant = rows && rows[0] ? rows[0] : null;
+        // Fetch restaurant
+        const restaurant = await RestaurantModel.findById(id);
 
-        // Send email by address (best-effort)
+        // Notify owner
         try {
             const ownerEmail = restaurant && (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) ? (restaurant.owner_email || restaurant.email || restaurant.ownerEmail) : null;
-            console.log('[patchVerifyRestaurant] notify owner:', ownerEmail, 'status:', dbStatus);
             if (ownerEmail) {
-                // Insert internal notification for owner
-                    try {
-                        // Prefer explicit owner id from restaurant row when available
-                        const ownerIdFromRow = restaurant && (restaurant.user_id || restaurant.owner_user_id) ? (restaurant.user_id || restaurant.owner_user_id) : null;
-                        let ownerId = ownerIdFromRow;
-                        if (!ownerId && ownerEmail) {
-                            const [urows] = await db.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [ownerEmail]);
-                            ownerId = (urows && urows[0] && urows[0].id) ? urows[0].id : null;
-                        }
-                        const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
-                        const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
-                        const payload = { restaurant_id: restaurant.id, status: dbStatus, note: note || null };
-                        await NotificationModel.createNotification({ user_id: ownerId, recipient_email: ownerEmail, type: dbStatus === 'disetujui' ? 'success' : 'warning', title, message, data: payload });
-                    } catch (notifErr) {
-                        console.warn('[patchVerifyRestaurant] could not insert notification (non-fatal):', notifErr && notifErr.message ? notifErr.message : notifErr);
-                    }
-                // convenience wrapper: sendStoreVerificationEmailTo(email, status, note, restaurantId)
-                await sendStoreVerificationEmailTo(ownerEmail, dbStatus, note || '', restaurant && restaurant.id);
-                console.log('[patchVerifyRestaurant] email attempted to', ownerEmail);
-            } else {
-                console.warn('[patchVerifyRestaurant] owner email not found, skipping email');
-            }
-        } catch (emailErr) {
-            console.error('[patchVerifyRestaurant] email send failed (non-fatal):', emailErr && emailErr.message ? emailErr.message : emailErr);
-        }
+                let ownerId = null;
+                try {
+                    const { data: urows } = await supabase.from('users').select('id').eq('email', ownerEmail).limit(1);
+                    ownerId = (urows && urows.length && urows[0] && urows[0].id) ? urows[0].id : null;
+                } catch (e) { /* ignore */ }
 
-        // If approved, try to set owner's user.role to 'penjual' (best-effort)
-        if (dbStatus === 'disetujui' && restaurant) {
-            try {
-                await setOwnerRoleToPenjual(restaurant);
-            } catch (roleErr) {
-                console.warn('[patchVerifyRestaurant] failed to set user role to penjual (non-fatal):', roleErr && roleErr.message ? roleErr.message : roleErr);
+                try {
+                    const title = dbStatus === 'disetujui' ? 'Toko Anda Disetujui' : 'Toko Anda Ditolak';
+                    const message = note || (dbStatus === 'disetujui' ? 'Admin telah menyetujui toko Anda. Silakan lanjutkan pendaftaran penjual.' : 'Pendaftaran toko Anda ditolak. Mohon periksa dokumen dan ajukan kembali.');
+                    const payload = { restaurant_id: restaurant && restaurant.id, status: dbStatus, note: note || null };
+                    await NotificationModel.createNotification({ user_id: ownerId, recipient_email: ownerEmail, type: dbStatus === 'disetujui' ? 'success' : 'warning', title, message, data: payload });
+                } catch (e) { /* ignore */ }
+
+                try { await sendStoreVerificationEmailTo(ownerEmail, dbStatus, note || '', restaurant && restaurant.id); } catch (e) { /* ignore */ }
             }
+        } catch (e) { /* ignore */ }
+
+        if (dbStatus === 'disetujui' && restaurant) {
+            try { await setOwnerRoleToPenjual(restaurant); } catch (e) { /* ignore */ }
         }
 
         return res.status(200).json({ message: 'Status restoran diperbarui.', restaurant });
@@ -618,6 +648,32 @@ const getRestaurantById = async (req, res) => {
         return res.status(500).json({ message: 'Gagal mengambil data restoran.' });
     }
 };
+
+// DEBUG: GET /admin/verifikasi/debug
+// Returns a sample of verifikasi rows and a set of column keys present in the returned rows.
+// Protected by adminRoutes (verifyToken + adminMiddleware) in the route.
+const getVerifikasiDebug = async (req, res) => {
+    try {
+        const limit = Math.min(50, Math.max(5, Number(req.query.limit) || 10));
+        // Fetch a sample page without filtering to inspect actual columns
+        const { data, error } = await supabase.from('verifikasi').select('*').order('created_at', { ascending: false }).limit(limit);
+        if (error) {
+            console.error('[getVerifikasiDebug] supabase fetch error', error);
+            return res.status(500).json({ message: 'Gagal mengambil sample verifikasi.', error: error.message || error });
+        }
+
+        const rows = data || [];
+        const keys = new Set();
+        rows.forEach(r => {
+            if (r && typeof r === 'object') Object.keys(r).forEach(k => keys.add(k));
+        });
+
+        return res.status(200).json({ sample_count: rows.length, keys: Array.from(keys), rows: rows.slice(0, 20) });
+    } catch (err) {
+        console.error('[getVerifikasiDebug] error', err && err.stack ? err.stack : err);
+        return res.status(500).json({ message: 'Internal server error while reading verifikasi sample.' });
+    }
+};
 module.exports = {
     getPendingRestaurants,
     getPendingMenus,
@@ -629,5 +685,6 @@ module.exports = {
     getRestaurantVerificationHistory,
     getActiveMenus,
     getMenuVerificationHistory,
+    getVerifikasiDebug,
 };
 

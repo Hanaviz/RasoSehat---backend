@@ -2,7 +2,7 @@
    Covers: approve success, reject success, unauthorized, restaurant not found,
    and ensures user's role becomes 'penjual' only on approve.
 
-   NOTE: These are integration tests that will talk to the actual MySQL database
+  NOTE: These are integration tests that will talk to the actual PostgreSQL database
    configured in `config/db.js`. Set a test database in your environment before
    running: provide `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`. Also ensure
    `SECRET_KEY` is set. The script sets `NODE_ENV=test` automatically when run
@@ -20,7 +20,7 @@ process.env.SECRET_KEY = process.env.SECRET_KEY || 'test-secret-key';
 const jwt = require('jsonwebtoken');
 
 const app = require('../server');
-const db = require('../config/db');
+const supabase = require('../supabase/supabaseClient');
 const UserModel = require('../models/UserModel');
 const RestaurantModel = require('../models/RestaurantModel');
 
@@ -33,9 +33,9 @@ describe('Admin restaurant approval integration', function () {
 
   before(async () => {
     // Clean potential leftover test records by email
-    await db.execute('DELETE FROM verifikasi WHERE admin_id IS NOT NULL AND note LIKE ?', ['%test-integration%']).catch(()=>{});
-    await db.execute('DELETE FROM restorans WHERE nama_restoran LIKE ?', ['%test-resto-%']).catch(()=>{});
-    await db.execute('DELETE FROM users WHERE email IN (?, ?)', ['test-admin@example.com', 'test-user@example.com']).catch(()=>{});
+    try { await supabase.from('verifikasi').delete().ilike('note', '%test-integration%'); } catch (e) {}
+    try { await supabase.from('restorans').delete().ilike('nama_restoran', '%test-resto-%'); } catch (e) {}
+    try { await supabase.from('users').delete().in('email', ['test-admin@example.com', 'test-user@example.com']); } catch (e) {}
 
     // Create admin user
     const adminHash = await bcrypt.hash('adminpass', 6);
@@ -63,10 +63,10 @@ describe('Admin restaurant approval integration', function () {
   after(async () => {
     // Cleanup created rows
     try {
-      await db.execute('DELETE FROM restorans WHERE id IN (?, ?)', [restoIdToApprove, restoIdToReject]);
+      await supabase.from('restorans').delete().in('id', [restoIdToApprove, restoIdToReject]);
     } catch (e) {}
     try {
-      await db.execute('DELETE FROM users WHERE id IN (?, ?)', [adminUserId, normalUserId]);
+      await supabase.from('users').delete().in('id', [adminUserId, normalUserId]);
     } catch (e) {}
   });
 
@@ -101,8 +101,8 @@ describe('Admin restaurant approval integration', function () {
     expect(res.body).to.have.property('message');
 
     // Verify restaurant status in DB
-    const [rows] = await db.execute('SELECT status_verifikasi, user_id FROM restorans WHERE id = ?', [restoIdToApprove]);
-    expect(rows && rows[0] && rows[0].status_verifikasi).to.equal('disetujui');
+    const { data: rowsRes } = await supabase.from('restorans').select('status_verifikasi,user_id').eq('id', restoIdToApprove).limit(1);
+    expect(rowsRes && rowsRes[0] && rowsRes[0].status_verifikasi).to.equal('disetujui');
 
     // Verify user's role changed
     const afterUser = await UserModel.findById(normalUserId);
@@ -111,7 +111,7 @@ describe('Admin restaurant approval integration', function () {
 
   it('rejects restaurant and user role remains unchanged', async () => {
     // Reset normal user's role to pembeli for this test case
-    await db.execute('UPDATE users SET role = ? WHERE id = ?', ['pembeli', normalUserId]);
+    await supabase.from('users').update({ role: 'pembeli' }).eq('id', normalUserId);
 
     const res = await request(app)
       .patch(`/api/admin/restaurants/${restoIdToReject}/verify`)
@@ -120,8 +120,8 @@ describe('Admin restaurant approval integration', function () {
 
     expect(res.status).to.equal(200);
 
-    const [rows] = await db.execute('SELECT status_verifikasi FROM restorans WHERE id = ?', [restoIdToReject]);
-    expect(rows && rows[0] && rows[0].status_verifikasi).to.equal('ditolak');
+    const { data: rowsRes2 } = await supabase.from('restorans').select('status_verifikasi').eq('id', restoIdToReject).limit(1);
+    expect(rowsRes2 && rowsRes2[0] && rowsRes2[0].status_verifikasi).to.equal('ditolak');
 
     const userAfter = await UserModel.findById(normalUserId);
     expect(userAfter.role).to.not.equal('penjual');
@@ -134,7 +134,7 @@ describe('Admin restaurant approval integration', function () {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'approved' });
 
-    // Controller returns 404 when update affectedRows === 0
+    // Controller returns 404 when update rowCount === 0
     expect(res.status).to.be.oneOf([404, 500]);
   });
 });

@@ -7,6 +7,18 @@ require('./config/db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Simple request logger for development to help diagnose 404s and routing issues
+if (process.env.NODE_ENV !== 'production') {
+    app.use((req, res, next) => {
+        try {
+            console.log(`[REQ] ${req.method} ${req.originalUrl} - body: ${JSON.stringify(req.body || {})}`);
+        } catch (e) {
+            console.log(`[REQ] ${req.method} ${req.originalUrl}`);
+        }
+        next();
+    });
+}
+
 // Enable CORS for local development. Accept requests from localhost on any port
 // or fallback to the value in env if provided. This avoids CORS failures when
 // Vite uses a different port (5173/5174/etc.). In production this should be
@@ -36,13 +48,57 @@ const menuRoutes = require('./routes/menuRoutes');
 const path = require('path');
 const restaurantRoutes = require('./routes/restaurantRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
+const fs = require('fs');
+const { resizeAndCache } = require('./utils/imageResizer');
 
 app.use('/api/categories', categoryRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/menus', menuRoutes); 
-// Serve uploaded files (restaurant uploads)
+
+// Serve uploaded files with optional on-demand resizing for menu images
+// Example: GET /uploads/menu/12345.jpg?w=800
+app.get('/uploads/menu/:filename', async (req, res, next) => {
+    try {
+        const filename = req.params.filename;
+        const width = req.query.w ? Number(req.query.w) : null;
+        const uploadsDir = path.join(__dirname, 'uploads', 'menu');
+        const srcPath = path.join(uploadsDir, filename);
+
+        if (!fs.existsSync(srcPath)) return res.status(404).send('Not found');
+
+        if (!width) {
+            // No resizing requested — stream original file
+            return res.sendFile(srcPath);
+        }
+
+        const cacheDir = path.join(uploadsDir, 'cache');
+        const cachedName = `${width}-${filename}`;
+        const cachedPath = path.join(cacheDir, cachedName);
+
+        if (fs.existsSync(cachedPath)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000');
+            return res.sendFile(cachedPath);
+        }
+
+        // Create resized version and serve it
+        try {
+            await resizeAndCache(srcPath, cachedPath, width, 82);
+            res.setHeader('Cache-Control', 'public, max-age=31536000');
+            return res.sendFile(cachedPath);
+        } catch (err) {
+            console.error('[image resize] failed', err && err.message ? err.message : err);
+            // fallback to original
+            return res.sendFile(srcPath);
+        }
+    } catch (err) {
+        console.error('[uploads middleware] error', err && err.message ? err.message : err);
+        return res.status(500).send('Internal server error');
+    }
+});
+
+// Serve other uploads statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Mount restaurants API
 app.use('/api/restaurants', restaurantRoutes);

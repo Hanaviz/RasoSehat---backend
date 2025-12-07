@@ -17,7 +17,8 @@ const getFeatured = async (req, res) => {
   try {
     const limit = Number(req.query.limit) || 8;
     const rows = await MenuModel.getFeaturedMenus(limit);
-    return res.json({ success: true, data: rows.map(r => ({ ...r, diet_claims: JSON.parse(r.diet_claims || '[]') })) });
+    const safe = rows.map(r => ({ ...r, diet_claims: Array.isArray(r.diet_claims) ? r.diet_claims : (typeof r.diet_claims === 'string' ? (() => { try { return JSON.parse(r.diet_claims); } catch(e){ return String(r.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []) }));
+    return res.json({ success: true, data: safe });
   } catch (err) {
     console.error('getFeatured error', err);
     return res.status(500).json({ success: false, message: 'Gagal mengambil featured menus.' });
@@ -29,10 +30,26 @@ const search = async (req, res) => {
     const q = req.query.q || null;
     const categoryId = req.query.category_id || null;
     const rows = await MenuModel.searchAndFilter(q, categoryId, null, 50);
-    return res.json({ success: true, data: rows.map(r => ({ ...r, diet_claims: JSON.parse(r.diet_claims || '[]') })) });
+    const safe = rows.map(r => ({ ...r, diet_claims: Array.isArray(r.diet_claims) ? r.diet_claims : (typeof r.diet_claims === 'string' ? (() => { try { return JSON.parse(r.diet_claims); } catch(e){ return String(r.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []) }));
+    return res.json({ success: true, data: safe });
   } catch (err) {
     console.error('search error', err);
     return res.status(500).json({ success: false, message: 'Gagal mencari menu.' });
+  }
+};
+
+const getByCategory = async (req, res) => {
+  try {
+    const key = req.params.key;
+    const limit = Number(req.query.limit) || 8;
+    if (!key) return res.status(400).json({ success: false, message: 'Category key required' });
+    console.log(`[MenuController.getByCategory] requested key='${key}', limit=${limit}`);
+    const rows = await MenuModel.findByDietClaim ? await MenuModel.findByDietClaim(key, limit) : [];
+    console.log(`[MenuController.getByCategory] result count for key='${key}': ${Array.isArray(rows) ? rows.length : 0}`);
+    return res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('getByCategory error', err);
+    return res.status(500).json({ success: false, message: 'Gagal mengambil menu berdasarkan kategori.' });
   }
 };
 
@@ -41,7 +58,7 @@ const getById = async (req, res) => {
     const id = req.params.id;
     const menu = await MenuModel.findById(id);
     if (!menu) return res.status(404).json({ success: false, message: 'Menu tidak ditemukan.' });
-    menu.diet_claims = JSON.parse(menu.diet_claims || '[]');
+    menu.diet_claims = Array.isArray(menu.diet_claims) ? menu.diet_claims : (typeof menu.diet_claims === 'string' ? (() => { try { return JSON.parse(menu.diet_claims); } catch(e){ return String(menu.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []);
     return res.json({ success: true, data: menu });
   } catch (err) {
     console.error('getById error', err);
@@ -56,7 +73,7 @@ const getBySlug = async (req, res) => {
     const menu = await MenuModel.findBySlug(slug);
     console.log('[DEBUG getBySlug] menu fetched:', menu ? { id: menu.id, nama_menu: menu.nama_menu, diet_claims: menu.diet_claims } : null);
     if (!menu) return res.status(404).json({ success: false, message: 'Menu tidak ditemukan.' });
-    menu.diet_claims = JSON.parse(menu.diet_claims || '[]');
+    menu.diet_claims = Array.isArray(menu.diet_claims) ? menu.diet_claims : (typeof menu.diet_claims === 'string' ? (() => { try { return JSON.parse(menu.diet_claims); } catch(e){ return String(menu.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []);
     return res.json({ success: true, data: menu });
   } catch (err) {
     console.error('getBySlug error', err);
@@ -74,7 +91,7 @@ const createMenu = async (req, res) => {
     console.log('[DEBUG createMenu] req.user:', user ? { id: user.id, role: user.role } : null);
     console.log('[DEBUG createMenu] req.body keys:', Object.keys(req.body || {}));
     console.log('[DEBUG createMenu] req.body sample:', req.body);
-    console.log('[DEBUG createMenu] req.file:', req.file ? { fieldname: req.file.fieldname, path: req.file.path, originalname: req.file.originalname } : null);
+    console.log('[DEBUG createMenu] req.file:', req.file ? { fieldname: req.file.fieldname, path: req.file.path, originalname: req.file.originalname, size: req.file.size } : null);
 
     const body = req.body || {};
     const file = req.file || null;
@@ -140,7 +157,7 @@ const createMenu = async (req, res) => {
 
     const created = await MenuModel.createMenu(menuData);
     if (!created) return res.status(500).json({ success: false, message: 'Gagal membuat menu.' });
-    created.diet_claims = JSON.parse(created.diet_claims || '[]');
+    created.diet_claims = Array.isArray(created.diet_claims) ? created.diet_claims : (typeof created.diet_claims === 'string' ? (() => { try { return JSON.parse(created.diet_claims); } catch(e){ return String(created.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []);
     return res.status(201).json({ success: true, data: created });
   } catch (err) {
     console.error('createMenu error', err);
@@ -148,4 +165,4 @@ const createMenu = async (req, res) => {
   }
 };
 
-module.exports = { list, getById, getBySlug, createMenu, getFeatured, search };
+module.exports = { list, getById, getBySlug, createMenu, getFeatured, search, getByCategory };

@@ -14,6 +14,8 @@ router.get('/restaurant/:id', verifyToken, adminMiddleware, adminController.getR
 // New: Active and history endpoints for management views
 router.get('/restaurants/active', verifyToken, adminMiddleware, adminController.getActiveRestaurants);
 router.get('/restaurants/history', verifyToken, adminMiddleware, adminController.getRestaurantVerificationHistory);
+// Debugging: return sample of verifikasi table (admin only)
+router.get('/verifikasi/debug', verifyToken, adminMiddleware, adminController.getVerifikasiDebug);
 router.put('/verify/restaurant/:id', verifyToken, adminMiddleware, adminController.verifyRestaurant);
 // New PATCH endpoint for admin verification (required flow)
 router.patch('/restaurants/:id/verify', verifyToken, adminMiddleware, adminController.patchVerifyRestaurant);

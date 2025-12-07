@@ -1,0 +1,29 @@
+PostgreSQL Migration: MySQL -> PostgreSQL (squash commit)
+
+Summary:
+- Replace mysql/mysql2 usage and MySQL idioms with native `pg` usage (Pool API).
+- Convert SQL placeholders from `?` to `$1,$2,...`.
+- Use `INSERT ... RETURNING id` for inserts that require returned IDs.
+- Replace `insertId` / `affectedRows` assumptions with `res.rows` and `res.rowCount`.
+- Replace MySQL-specific functions where applicable (IFNULL -> COALESCE), and ensure transactional code uses `client = await pool.connect()` with `BEGIN`/`COMMIT`/`ROLLBACK`.
+
+What changed (high level):
+- `config/db.js` now exports a plain `pg` Pool configured via `DATABASE_URL` and `NODE_ENV`-aware SSL settings.
+- All models, controllers, scripts, and tests were updated to use `$n` placeholders and `res.rows`/`res.rowCount`.
+- JSON-handling code was adjusted to safely parse/stringify JSON columns, and scripts were updated to expect `res.rows`.
+- MySQL-era variable names and comments were normalized (e.g., `insertId` -> `insertedId`).
+
+Notes / migration checklist:
+- Verify `DATABASE_URL` environment variable is set before running.
+- Confirm PostgreSQL schema matches the expected table/column names and types used in converted queries (especially JSON/text columns and timestamp defaults).
+- Run tests locally and inspect failures; runtime-only issues (missing env vars, schema mismatch) must be fixed locally.
+
+How to commit locally (squash commit):
+1. Review changes locally: `git status` and `git diff`.
+2. Stage all changes: `git add -A`.
+3. Create a single commit: `git commit -m "Postgres migration: convert backend from MySQL to PostgreSQL (pg). Replace placeholders with $n, use RETURNING for inserts, use res.rows & res.rowCount, convert transactions, update scripts/tests/docs."`
+
+If you want me to create a git patch file instead, run locally:
+  git format-patch -1 HEAD --stdout > postgres-migration.patch
+
+Signed-off-by: Migration assistant

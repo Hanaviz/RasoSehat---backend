@@ -24,6 +24,13 @@ router.get('/featured', menuController.getFeatured ? menuController.getFeatured 
 router.get('/search', menuController.search);
 
 /**
+ * @route GET /api/menus/by-category/:key
+ * @description Ambil menu berdasarkan diet claim key (mis. low_calorie, high_fiber)
+ * @access Public
+ */
+router.get('/by-category/:key', menuController.getByCategory);
+
+/**
  * @route GET /api/menus/slug/:slug
  * @description Ambil detail menu berdasarkan slug (friendly URL)
  * @access Public

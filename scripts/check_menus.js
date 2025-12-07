@@ -1,28 +1,32 @@
-// quick DB inspector for menu_makanan
-const db = require('../config/db');
+// quick DB inspector for menu_makanan (Supabase)
+const supabase = require('../supabase/supabaseClient');
 
 (async () => {
   try {
     console.log('Querying sample rows from menu_makanan...');
-    const [rows] = await db.execute('SELECT id, nama_menu, status_verifikasi, harga, foto FROM menu_makanan LIMIT 30');
+    const { data: rows, error: rowsErr } = await supabase.from('menu_makanan').select('id,nama_menu,status_verifikasi,harga,foto').limit(30);
+    if (rowsErr) throw rowsErr;
     console.log('Sample rows (up to 30):');
-    console.table(rows);
+    console.table(rows || []);
 
-    const [countRows] = await db.execute("SELECT COUNT(*) as cnt FROM menu_makanan WHERE status_verifikasi = 'disetujui'");
-    console.log(`Approved menus count: ${countRows[0].cnt}`);
+    const { count, error: countErr } = await supabase.from('menu_makanan').select('id', { count: 'exact', head: true }).eq('status_verifikasi', 'disetujui');
+    if (countErr) throw countErr;
+    console.log(`Approved menus count: ${count}`);
 
     const slug = 'buddha-bowl';
     console.log(`Searching for slug-like entries matching: ${slug}`);
-    const [matchRows] = await db.execute(
-      "SELECT id, nama_menu, status_verifikasi FROM menu_makanan WHERE LOWER(REPLACE(nama_menu, ' ', '-')) LIKE ? OR nama_menu LIKE ? LIMIT 20",
-      [`%${slug}%`, `%${slug.replace(/-/g, ' ')}%`]
-    );
+    // Best-effort search: match slug or name-ilike
+    const { data: matchRows, error: matchErr } = await supabase.from('menu_makanan')
+      .select('id,nama_menu,status_verifikasi')
+      .or(`slug.ilike.%${slug}%,nama_menu.ilike.%${slug.replace(/-/g, ' ')}%`)
+      .limit(20);
+    if (matchErr) throw matchErr;
     console.log('Slug-like matches:');
-    console.table(matchRows);
+    console.table(matchRows || []);
 
     process.exit(0);
   } catch (err) {
-    console.error('Error querying DB:', err.message);
+    console.error('Error querying DB:', err && err.message ? err.message : err);
     process.exit(1);
   }
 })();

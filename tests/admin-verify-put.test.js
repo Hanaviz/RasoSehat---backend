@@ -11,7 +11,7 @@ process.env.SECRET_KEY = process.env.SECRET_KEY || 'test-secret-key';
 
 const jwt = require('jsonwebtoken');
 const app = require('../server');
-const db = require('../config/db');
+const supabase = require('../supabase/supabaseClient');
 const UserModel = require('../models/UserModel');
 const RestaurantModel = require('../models/RestaurantModel');
 
@@ -24,9 +24,9 @@ describe('PUT /api/admin/verify/restaurant/:id integration', function () {
 
   before(async () => {
     // Cleanup by email if present
-    await db.execute('DELETE FROM verifikasi WHERE note LIKE ?', ['%test-integration%']).catch(()=>{});
-    await db.execute('DELETE FROM restorans WHERE nama_restoran LIKE ?', ['%test-put-resto-%']).catch(()=>{});
-    await db.execute('DELETE FROM users WHERE email IN (?, ?)', ['test-put-admin@example.com', 'test-put-user@example.com']).catch(()=>{});
+    try { await supabase.from('verifikasi').delete().ilike('note', '%test-integration%'); } catch (e) {}
+    try { await supabase.from('restorans').delete().ilike('nama_restoran', '%test-put-resto-%'); } catch (e) {}
+    try { await supabase.from('users').delete().in('email', ['test-put-admin@example.com', 'test-put-user@example.com']); } catch (e) {}
 
     const adminHash = await bcrypt.hash('adminpass', 6);
     adminUserId = await UserModel.create('PUT Test Admin', 'test-put-admin@example.com', adminHash, 'admin');
@@ -46,8 +46,8 @@ describe('PUT /api/admin/verify/restaurant/:id integration', function () {
   });
 
   after(async () => {
-    try { await db.execute('DELETE FROM restorans WHERE id IN (?, ?)', [restoApproveId, restoRejectId]); } catch (e) {}
-    try { await db.execute('DELETE FROM users WHERE id IN (?, ?)', [adminUserId, normalUserId]); } catch (e) {}
+    try { await supabase.from('restorans').delete().in('id', [restoApproveId, restoRejectId]); } catch (e) {}
+    try { await supabase.from('users').delete().in('id', [adminUserId, normalUserId]); } catch (e) {}
   });
 
   it('responds 401/403 when no token provided', async () => {
@@ -89,8 +89,8 @@ describe('PUT /api/admin/verify/restaurant/:id integration', function () {
 
     expect(res.status).to.equal(200);
 
-    const [rows] = await db.execute('SELECT status_verifikasi, user_id FROM restorans WHERE id = ?', [restoApproveId]);
-    expect(rows && rows[0] && rows[0].status_verifikasi).to.equal('disetujui');
+    const { data: rowsRes } = await supabase.from('restorans').select('status_verifikasi,user_id').eq('id', restoApproveId).limit(1);
+    expect(rowsRes && rowsRes[0] && rowsRes[0].status_verifikasi).to.equal('disetujui');
 
     const after = await UserModel.findById(normalUserId);
     expect(after.role).to.equal('penjual');
@@ -98,7 +98,7 @@ describe('PUT /api/admin/verify/restaurant/:id integration', function () {
 
   it('rejects restaurant and does not change user role', async () => {
     // Reset role to pembeli
-    await db.execute('UPDATE users SET role = ? WHERE id = ?', ['pembeli', normalUserId]);
+    await supabase.from('users').update({ role: 'pembeli' }).eq('id', normalUserId);
 
     const res = await request(app)
       .put(`/api/admin/verify/restaurant/${restoRejectId}`)
@@ -107,8 +107,8 @@ describe('PUT /api/admin/verify/restaurant/:id integration', function () {
 
     expect(res.status).to.equal(200);
 
-    const [rows] = await db.execute('SELECT status_verifikasi FROM restorans WHERE id = ?', [restoRejectId]);
-    expect(rows && rows[0] && rows[0].status_verifikasi).to.equal('ditolak');
+    const { data: rowsRes2 } = await supabase.from('restorans').select('status_verifikasi').eq('id', restoRejectId).limit(1);
+    expect(rowsRes2 && rowsRes2[0] && rowsRes2[0].status_verifikasi).to.equal('ditolak');
 
     const userAfter = await UserModel.findById(normalUserId);
     expect(userAfter.role).to.not.equal('penjual');

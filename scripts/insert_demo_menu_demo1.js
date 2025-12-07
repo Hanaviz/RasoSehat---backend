@@ -1,13 +1,14 @@
-const db = require('../config/db');
+const supabase = require('../supabase/supabaseClient');
 
 (async () => {
   try {
     const slug = 'demo-1';
 
     // Check if slug already exists
-    const [existing] = await db.execute('SELECT id, slug, nama_menu FROM menu_makanan WHERE slug = ? LIMIT 1', [slug]);
-    if (existing && existing.length) {
-      console.log('Slug already exists:', existing[0]);
+    const { data: existRows, error: existErr } = await supabase.from('menu_makanan').select('id,slug,nama_menu').eq('slug', slug).limit(1);
+    if (existErr) throw existErr;
+    if (existRows && existRows.length) {
+      console.log('Slug already exists:', existRows[0]);
       process.exit(0);
     }
 
@@ -16,25 +17,40 @@ const db = require('../config/db');
     const kategoriId = 6;
     const namaMenu = 'Demo Menu 1';
     const deskripsi = 'Menu demo untuk pengujian (demo-1).';
-    const dietClaims = '[]';
+    const dietClaims = [];
     const harga = 35000.00;
     const foto = 'https://via.placeholder.com/400x300.png?text=Demo+Menu+1';
 
-    const sql = `INSERT INTO menu_makanan (
-      restoran_id, kategori_id, nama_menu, deskripsi, bahan_baku, metode_masak,
-      diet_claims, kalori, protein, gula, lemak, serat, lemak_jenuh, harga, foto, status_verifikasi, created_at, updated_at, slug
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'disetujui', NOW(), NOW(), ?)`;
+    const insertPayload = {
+      restoran_id: restoranId,
+      kategori_id: kategoriId,
+      nama_menu: namaMenu,
+      deskripsi,
+      bahan_baku: null,
+      metode_masak: null,
+      diet_claims: JSON.stringify(dietClaims),
+      kalori: 400,
+      protein: 12.0,
+      gula: 0.0,
+      lemak: 5.0,
+      serat: 3.0,
+      lemak_jenuh: 1.0,
+      harga,
+      foto,
+      status_verifikasi: 'disetujui',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      slug
+    };
 
-    const params = [
-      restoranId, kategoriId, namaMenu, deskripsi, null, null,
-      dietClaims, 400, 12.0, 0.0, 5.0, 3.0, 1.0, harga, foto, slug
-    ];
+    const { data: insertRes, error: insertErr } = await supabase.from('menu_makanan').insert(insertPayload).select('id');
+    if (insertErr) throw insertErr;
+    const newId = insertRes && insertRes[0] ? insertRes[0].id : null;
+    console.log('Inserted demo menu id:', newId);
 
-    const [result] = await db.execute(sql, params);
-    console.log('Inserted demo menu id:', result.insertId);
-
-    const [rows] = await db.execute('SELECT id, nama_menu, slug, status_verifikasi FROM menu_makanan WHERE id = ?', [result.insertId]);
-    console.log('Inserted row:', rows[0]);
+    const { data: rowsRes, error: rowsErr } = await supabase.from('menu_makanan').select('id,nama_menu,slug,status_verifikasi').eq('id', newId).limit(1);
+    if (rowsErr) throw rowsErr;
+    console.log('Inserted row:', rowsRes && rowsRes[0] ? rowsRes[0] : null);
   } catch (err) {
     console.error('Error inserting demo menu:', err && err.stack ? err.stack : err);
   } finally {
