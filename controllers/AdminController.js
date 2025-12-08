@@ -161,41 +161,34 @@ const getRestaurantVerificationHistory = async (req, res) => {
         const offset = (page - 1) * perPage;
         const fromIndex = offset;
         const toIndex = offset + perPage - 1;
-                // Best-effort: fetch verifikasi rows and enrich them with restaurant and admin name
-                // TODO: If performance is a concern, consider adding views or server-side RPC to perform joins.
-                console.debug(`[getRestaurantVerificationHistory] params page=${page} per_page=${perPage} range=${fromIndex}-${toIndex}`);
-                let verRows, vError;
-                try {
-                    // Some installations may not have a `target_type` column. Fetch a page of verifikasi rows
-                    // and do best-effort filtering in JS by checking a few possible column names.
-                    const resp = await supabase.from('verifikasi')
-                      .select('*')
-                      .order('created_at', { ascending: false })
-                      .range(fromIndex, toIndex);
-                    verRows = resp.data;
-                    vError = resp.error;
-                } catch (e) {
-                    console.error('[getRestaurantVerificationHistory] supabase call threw', e && e.message ? e.message : e);
-                    return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran (supabase call threw).' });
-                }
-                if (vError) {
-                    console.error('getRestaurantVerificationHistory supabase fetch error', vError);
-                    return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran.' });
-                }
+
+        console.debug(`[getRestaurantVerificationHistory] params page=${page} per_page=${perPage} range=${fromIndex}-${toIndex}`);
+
+        // Fetch verifikasi rows with exact count when supported
+        let verRows = [];
+        let total = 0;
+        try {
+            const resp = await supabase.from('verifikasi')
+                .select('*', { count: 'exact' })
+                .order('created_at', { ascending: false })
+                .range(fromIndex, toIndex);
+            verRows = resp.data || [];
+            total = typeof resp.count === 'number' ? resp.count : (Array.isArray(verRows) ? verRows.length : 0);
+        } catch (e) {
+            console.error('[getRestaurantVerificationHistory] supabase call threw', e && e.message ? e.message : e);
+            return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran (supabase call threw).' });
+        }
 
         const enriched = [];
-        // Normalize and filter rows: some DBs store the target kind in `target_type`, others may not.
         const possibleTypeKeys = ['target_type','tipe_target','jenis_target','type','target'];
         const possibleTargetIdKeys = ['target_id','objek_id','object_id','id_objek','targetid'];
+
         const filteredVerRows = (verRows || []).filter(v => {
-            // attempt to determine if this row refers to a restoran
             const typeVal = possibleTypeKeys.map(k => v && v[k]).find(Boolean);
-            // if known type exists, match typical values; otherwise attempt to infer from other fields
             if (typeVal) {
                 const tv = String(typeVal).toLowerCase();
                 return tv.includes('restor') || tv.includes('restoran') || tv.includes('store') || tv.includes('toko');
             }
-            // fallback: if target id exists and there is no explicit type, keep and attempt enrichment
             const tid = possibleTargetIdKeys.map(k => v && v[k]).find(id => typeof id !== 'undefined' && id !== null);
             return typeof tid !== 'undefined' && tid !== null;
         });
@@ -230,13 +223,16 @@ const getRestaurantVerificationHistory = async (req, res) => {
             });
         }
 
-        return res.status(200).json({ data: enriched, page, per_page: perPage });
+        const totalPages = perPage > 0 ? Math.max(1, Math.ceil(total / perPage)) : 1;
+        return res.status(200).json({ success: true, data: enriched, pagination: { page, per_page: perPage, total, total_pages: totalPages } });
     } catch (err) {
         console.error('getRestaurantVerificationHistory error', err && err.stack ? err.stack : err);
+        if (process.env.NODE_ENV === 'development') {
+            return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran.', error: err && err.message ? String(err.message) : String(err) });
+        }
         return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi restoran.' });
     }
 };
-
 // GET /admin/menus/active?page=&per_page=
 const getActiveMenus = async (req, res) => {
     try {
@@ -350,9 +346,17 @@ const getMenuVerificationHistory = async (req, res) => {
             });
         }
 
+        if (process.env.NODE_ENV === 'development') {
+            console.debug('[getMenuVerificationHistory] returning enriched count=', enriched.length);
+        }
         return res.status(200).json({ data: enriched, page, per_page: perPage });
     } catch (err) {
+        // Log full error for diagnostics
         console.error('getMenuVerificationHistory error', err && err.stack ? err.stack : err);
+        // In development include error details in response to help debugging
+        if (process.env.NODE_ENV === 'development') {
+            return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi menu.', error: err && err.message ? String(err.message) : String(err) });
+        }
         return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi menu.' });
     }
 };

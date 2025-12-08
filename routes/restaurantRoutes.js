@@ -8,6 +8,8 @@ const upload = require('../middleware/uploadMiddleware');
 router.get('/', RestaurantController.getAll);
 // Public: get by id
 router.get('/:id', RestaurantController.getById);
+// Public: get by slug (friendly URL)
+router.get('/slug/:slug', RestaurantController.getBySlug ? RestaurantController.getBySlug : async (req, res) => { res.status(404).json({ success: false, message: 'Not implemented' }); });
 
 // Authenticated routes for multi-step registration
 // Allow any authenticated user to start the registration flow. Role-checking
@@ -20,6 +22,7 @@ router.put('/:id/step-2', verifyToken, RestaurantController.updateStep2);
 // Step 3 file uploads: accept single files for each field
 router.put('/:id/step-3', verifyToken, upload.fields([
   { name: 'foto_ktp', maxCount: 10 },
+  { name: 'foto', maxCount: 1 },
   { name: 'npwp', maxCount: 10 },
   { name: 'dokumen_usaha', maxCount: 10 }
 ]), RestaurantController.updateStep3);

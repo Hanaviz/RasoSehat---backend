@@ -60,6 +60,7 @@ class RestaurantModel {
 		if (Object.prototype.hasOwnProperty.call(fields, 'dominant_cooking_method')) updatePayload.dominant_cooking_method = fields.dominant_cooking_method;
 		if (Object.prototype.hasOwnProperty.call(fields, 'dominant_fat')) updatePayload.dominant_fat = fields.dominant_fat;
 		if (Object.prototype.hasOwnProperty.call(fields, 'maps_latlong')) updatePayload.maps_latlong = fields.maps_latlong;
+		if (Object.prototype.hasOwnProperty.call(fields, 'maps_link')) updatePayload.maps_link = fields.maps_link;
 		if (Object.prototype.hasOwnProperty.call(fields, 'slug')) updatePayload.slug = finalSlug || null;
 		// always update updated_at
 		updatePayload.updated_at = new Date().toISOString();
@@ -69,9 +70,8 @@ class RestaurantModel {
 		return this.findById(id);
 	}
 
-	static async updateStep3(id, { foto, foto_ktp, npwp, dokumen_usaha, documents_json }) {
+	static async updateStep3(id, { foto_ktp, npwp, dokumen_usaha, documents_json }) {
 		const payload = {
-			foto: foto || null,
 			foto_ktp: foto_ktp || null,
 			npwp: npwp || null,
 			dokumen_usaha: dokumen_usaha || null,
@@ -97,7 +97,11 @@ class RestaurantModel {
 		if (row) {
 			try { row.health_focus = row.health_focus ? (typeof row.health_focus === 'object' ? row.health_focus : JSON.parse(row.health_focus)) : []; } catch (e) { row.health_focus = []; }
 			try { row.dominant_cooking_method = row.dominant_cooking_method ? (typeof row.dominant_cooking_method === 'object' ? row.dominant_cooking_method : JSON.parse(row.dominant_cooking_method)) : []; } catch (e) { row.dominant_cooking_method = []; }
-			try { row.documents_json = row.documents_json ? (typeof row.documents_json === 'object' ? row.documents_json : JSON.parse(row.documents_json)) : { foto_ktp: [], npwp: [], dokumen_usaha: [] }; } catch (e) { row.documents_json = { foto_ktp: [], npwp: [], dokumen_usaha: [] }; }
+			try { row.documents_json = row.documents_json ? (typeof row.documents_json === 'object' ? row.documents_json : JSON.parse(row.documents_json)) : { profile: null, foto_ktp: [], npwp: [], dokumen_usaha: [] }; } catch (e) { row.documents_json = { profile: null, foto_ktp: [], npwp: [], dokumen_usaha: [] }; }
+			// Expose `foto` property for backward compatibility (some front-end reads `restaurant.foto`)
+			if (!row.foto && row.documents_json && row.documents_json.profile) {
+				row.foto = row.documents_json.profile;
+			}
 		}
 		return row;
 	}

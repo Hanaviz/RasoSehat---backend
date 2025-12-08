@@ -45,6 +45,7 @@ const authRoutes = require('./routes/authRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const menuRoutes = require('./routes/menuRoutes');
+const searchRoutes = require('./routes/searchRoutes');
 const path = require('path');
 const restaurantRoutes = require('./routes/restaurantRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
@@ -56,6 +57,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/menus', menuRoutes); 
+app.use('/api/search', searchRoutes);
 
 // Serve uploaded files with optional on-demand resizing for menu images
 // Example: GET /uploads/menu/12345.jpg?w=800

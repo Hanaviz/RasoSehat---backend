@@ -49,7 +49,7 @@ const MenuModel = {
         try {
             let q = supabase
                 .from('menu_makanan')
-                .select('id,nama_menu,deskripsi,harga,foto,kalori,gula,lemak,diet_claims,restorans(nama_restoran,alamat,latitude,longitude)')
+                .select('id,nama_menu,deskripsi,harga,foto,kalori,gula,lemak,diet_claims,restorans(nama_restoran,alamat,latitude,longitude,slug)')
                 .eq('status_verifikasi', 'disetujui');
 
             if (searchQuery) {
@@ -74,7 +74,8 @@ const MenuModel = {
                 nama_restoran: r.restorans?.nama_restoran || null,
                 alamat: r.restorans?.alamat || null,
                 latitude: r.restorans?.latitude || null,
-                longitude: r.restorans?.longitude || null
+                longitude: r.restorans?.longitude || null,
+                restaurant_slug: r.restorans?.slug || null
             }));
         } catch (e) {
             console.error('searchAndFilter caught', e);
@@ -164,7 +165,7 @@ const MenuModel = {
         try {
             const { data, error } = await supabase
                 .from('menu_makanan')
-                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude)')
+                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug)')
                 .eq('slug', slug)
                 .eq('status_verifikasi', 'disetujui')
                 .limit(1)
@@ -177,7 +178,7 @@ const MenuModel = {
         try {
             const { data: normData, error: normErr } = await supabase
                 .from('menu_makanan')
-                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude)')
+                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug)')
                 .filter("LOWER(REPLACE(nama_menu,' ','-'))", 'eq', nameCandidate.toLowerCase())
                 .eq('status_verifikasi', 'disetujui')
                 .limit(1);
@@ -190,7 +191,7 @@ const MenuModel = {
         try {
             const { data: exactData, error: exactErr } = await supabase
                 .from('menu_makanan')
-                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude)')
+                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug)')
                 .ilike('nama_menu', nameCandidate)
                 .eq('status_verifikasi', 'disetujui')
                 .limit(1);
@@ -227,8 +228,9 @@ MenuModel.findByDietClaim = async (claimKey, limit = 12) => {
             'vegan': ['Vegan', 'Vegan'],
             'low_saturated_fat': ['Rendah Lemak Jenuh', 'Rendah Lemak Jenuh'],
             'kids_friendly': ['Ramah Anak', 'Ramah Anak'],
-            'gluten_free': ['Bebas Gluten', 'Bebas Gluten'],
-            'organic': ['Organik', 'Organik']
+            // include several common synonyms/variants for better matching
+            'gluten_free': ['Bebas Gluten', 'Tanpa Gluten', 'Gluten Free', 'Gluten-Free'],
+            'organic': ['Organik', 'Bebas Pestisida', 'Tanpa Pestisida']
         };
         const displayCandidates = claimDisplayMap[raw] || [];
 
@@ -294,6 +296,21 @@ MenuModel.findByDietClaim = async (claimKey, limit = 12) => {
             const res2 = await runIlike('display_quoted:' + disp, quotedPattern);
             if (res2 && res2.length) return res2;
             console.log(`[MenuModel.findByDietClaim] no rows for display attempt '${disp}'`);
+        }
+
+        // As an extra fallback, try to match JSON key fields if diet_claims is stored as array of objects
+        // e.g. [{"key":"gluten_free","display":"Bebas Gluten"}]
+        const jsonKeyCandidates = [];
+        jsonKeyCandidates.push(`%\"key\":\"${raw}\"%`);
+        if (underscored) jsonKeyCandidates.push(`%\"key\":\"${underscored}\"%`);
+        if (hyphen) jsonKeyCandidates.push(`%\"key\":\"${hyphen}\"%`);
+        // also try simple quoted raw (no property name) as some stores are just arrays of strings
+        jsonKeyCandidates.push(`%\"${raw}\"%`);
+
+        for (const jp of jsonKeyCandidates) {
+            const resj = await runIlike('json_key_pattern:' + jp, jp);
+            if (resj && resj.length) return resj;
+            console.log(`[MenuModel.findByDietClaim] no rows for json-key attempt pattern '${jp}'`);
         }
 
         console.log(`[MenuModel.findByDietClaim] no matches for '${claimKey}'`);

@@ -35,6 +35,7 @@ const updateStep2 = async (req, res) => {
     // Extract fields (supporting new columns)
     const {
       nama_restoran, alamat, deskripsi, latitude, longitude, no_telepon, jenis_usaha, mapsLatLong,
+      maps_link, mapsLink,
       owner_name, owner_email, phone_admin, operating_hours, sales_channels, social_media,
       store_category, commitment_checked, health_focus, dominant_cooking_method,
       dominant_fat, slug
@@ -43,8 +44,10 @@ const updateStep2 = async (req, res) => {
     // Parse lat/lng if mapsLatLong provided or if separate values present
     let lat = latitude;
     let lng = longitude;
-    if ((!lat || !lng) && mapsLatLong) {
-      const parts = String(mapsLatLong || '').split(',').map(s => s.trim());
+    // Try to parse coordinates from any maps field provided (mapsLatLong, maps_link, mapsLink)
+    const candidateMaps = mapsLatLong || maps_link || mapsLink || null;
+    if ((!lat || !lng) && candidateMaps) {
+      const parts = String(candidateMaps || '').split(',').map(s => s.trim());
       if (parts.length === 2) {
         lat = parseFloat(parts[0]) || null;
         lng = parseFloat(parts[1]) || null;
@@ -84,6 +87,7 @@ const updateStep2 = async (req, res) => {
       dominant_cooking_method: dominantCookingStr,
       dominant_fat,
       maps_latlong: mapsLatLong || null,
+      maps_link: maps_link || mapsLink || null,
       slug: slug || null
     });
 
@@ -127,7 +131,10 @@ const updateStep3 = async (req, res) => {
     const finalNpwp = npwpArr.length ? npwpArr : (existingDocs && Array.isArray(existingDocs.npwp) ? existingDocs.npwp : (existing.npwp ? [existing.npwp] : []));
     const finalDokumen = dokumenArr.length ? dokumenArr : (existingDocs && Array.isArray(existingDocs.dokumen_usaha) ? existingDocs.dokumen_usaha : (existing.dokumen_usaha ? [existing.dokumen_usaha] : []));
 
-    const documentsJson = JSON.stringify({ foto_ktp: finalFoto, npwp: finalNpwp, dokumen_usaha: finalDokumen });
+    // include profile foto in documents_json under key `profile` for backward compatibility
+    const profileFromExisting = (existingDocs && existingDocs.profile) ? existingDocs.profile : (existing.foto || null);
+    const profileFinal = fotoProfileUrl || profileFromExisting || null;
+    const documentsJson = JSON.stringify({ profile: profileFinal, foto_ktp: finalFoto, npwp: finalNpwp, dokumen_usaha: finalDokumen });
 
     // For backward-compatibility, keep single-file columns populated with first item (if any)
     const foto_ktp_single = finalFoto.length ? finalFoto[0] : (existing.foto_ktp || null);
@@ -135,7 +142,6 @@ const updateStep3 = async (req, res) => {
     const dokumen_usaha_single = finalDokumen.length ? finalDokumen[0] : (existing.dokumen_usaha || null);
 
     const updated = await RestaurantModel.updateStep3(id, {
-      foto: fotoProfileUrl,
       foto_ktp: foto_ktp_single,
       npwp: npwp_single,
       dokumen_usaha: dokumen_usaha_single,
@@ -251,3 +257,25 @@ module.exports = {
   getMyStore,
   getAll
 };
+
+// Get restaurant by slug (friendly URL) and include its approved menus
+const getBySlug = async (req, res) => {
+  try {
+    const slug = req.params.slug;
+    if (!slug) return res.status(400).json({ success: false, message: 'slug required' });
+    const restaurant = await RestaurantModel.findBySlug(slug);
+    if (!restaurant) return res.status(404).json({ success: false, message: 'Restoran tidak ditemukan.' });
+
+    // Fetch approved menus for this restaurant
+    const MenuModel = require('../models/MenuModel');
+    const menus = await MenuModel.findByRestaurantId(restaurant.id || restaurant.id);
+
+    return res.json({ success: true, data: { restaurant, menus } });
+  } catch (error) {
+    console.error('getBySlug error', error);
+    return res.status(500).json({ success: false, message: 'Gagal mengambil data restoran.' });
+  }
+};
+
+// expose new method
+module.exports.getBySlug = getBySlug;
