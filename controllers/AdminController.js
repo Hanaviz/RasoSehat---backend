@@ -276,15 +276,15 @@ const getMenuVerificationHistory = async (req, res) => {
         const fromIndex = offset;
         const toIndex = offset + perPage - 1;
                 console.debug(`[getMenuVerificationHistory] params page=${page} per_page=${perPage} range=${fromIndex}-${toIndex}`);
-                let verRows, vError;
+                let verRows, vError, resp;
                 try {
                     // Fetch verifikasi rows without filtering (some DB schemas lack target_type)
-                    const resp = await supabase.from('verifikasi')
-                        .select('*')
+                    resp = await supabase.from('verifikasi')
+                        .select('*', { count: 'exact' })
                         .order('created_at', { ascending: false })
                         .range(fromIndex, toIndex);
-                    verRows = resp.data;
-                    vError = resp.error;
+                    verRows = resp.data || [];
+                    vError = resp.error || null;
                 } catch (e) {
                     console.error('[getMenuVerificationHistory] supabase call threw', e && e.message ? e.message : e);
                     return res.status(500).json({ message: 'Gagal mengambil riwayat verifikasi menu (supabase call threw).' });
@@ -309,47 +309,63 @@ const getMenuVerificationHistory = async (req, res) => {
             });
 
             for (const v of filteredVerRows) {
-            const menuId = v.target_id || v.objek_id || null;
-            let nama_menu = null;
-            let nama_restoran = null;
-            if (menuId) {
                 try {
-                    const { data: mrows } = await supabase.from('menu_makanan').select('id,nama_menu,restoran_id').eq('id', menuId).limit(1);
-                    if (mrows && mrows.length) {
-                        nama_menu = mrows[0].nama_menu;
-                        if (mrows[0].restoran_id) {
-                            const r = await RestaurantModel.findById(mrows[0].restoran_id);
-                            nama_restoran = r ? r.nama_restoran : null;
+                    const menuId = v.target_id || v.objek_id || null;
+                    let nama_menu = null;
+                    let nama_restoran = null;
+                    let foto_menu = null;
+                    if (menuId) {
+                        try {
+                            const { data: mrows } = await supabase.from('menu_makanan').select('id,nama_menu,restoran_id,foto').eq('id', menuId).limit(1);
+                            if (mrows && mrows.length) {
+                                nama_menu = mrows[0].nama_menu;
+                                foto_menu = mrows[0].foto || null;
+                                if (mrows[0].restoran_id) {
+                                    const r = await RestaurantModel.findById(mrows[0].restoran_id);
+                                    nama_restoran = r ? r.nama_restoran : null;
+                                }
+                            }
+                        } catch (innerErr) {
+                            console.warn('[getMenuVerificationHistory] failed to fetch menu details for id=', menuId, innerErr && innerErr.message ? innerErr.message : innerErr);
                         }
                     }
-                } catch (e) { /* non-fatal */ }
+
+                    let admin_name = null;
+                    if (v.admin_id) {
+                        try {
+                            const { data: urows } = await supabase.from('users').select('name').eq('id', v.admin_id).limit(1);
+                            if (urows && urows.length) admin_name = urows[0].name;
+                        } catch (innerErr) {
+                            console.warn('[getMenuVerificationHistory] failed to fetch admin name for admin_id=', v.admin_id, innerErr && innerErr.message ? innerErr.message : innerErr);
+                        }
+                    }
+
+                    enriched.push({
+                        id: v.id,
+                        menu_id: menuId,
+                        admin_id: v.admin_id,
+                        admin_name,
+                        status: v.status || null,
+                        catatan: v.note || v.catatan || null,
+                        verified_at: v.created_at || v.tanggal_verifikasi || null,
+                        nama_menu,
+                        nama_restoran,
+                        foto: foto_menu
+                    });
+                } catch (rowErr) {
+                    console.error('[getMenuVerificationHistory] error processing verifikasi row', v && v.id ? v.id : '(unknown)', rowErr && rowErr.stack ? rowErr.stack : rowErr);
+                    // skip this row and continue
+                    continue;
+                }
             }
 
-            let admin_name = null;
-            if (v.admin_id) {
-                try {
-                    const { data: urows } = await supabase.from('users').select('name').eq('id', v.admin_id).limit(1);
-                    if (urows && urows.length) admin_name = urows[0].name;
-                } catch (e) { /* non-fatal */ }
-            }
-
-            enriched.push({
-                id: v.id,
-                menu_id: menuId,
-                admin_id: v.admin_id,
-                admin_name,
-                status: v.status,
-                catatan: v.note || v.catatan || null,
-                verified_at: v.created_at || v.tanggal_verifikasi || null,
-                nama_menu,
-                nama_restoran
-            });
-        }
-
+        // Ensure we have total count from supabase response if available
+        const total = typeof resp?.count === 'number' ? resp.count : (Array.isArray(verRows) ? verRows.length : 0);
+        const totalPages = perPage > 0 ? Math.max(1, Math.ceil(total / perPage)) : 1;
         if (process.env.NODE_ENV === 'development') {
-            console.debug('[getMenuVerificationHistory] returning enriched count=', enriched.length);
+            console.debug('[getMenuVerificationHistory] returning enriched count=', enriched.length, 'total=', total);
         }
-        return res.status(200).json({ data: enriched, page, per_page: perPage });
+        return res.status(200).json({ success: true, data: enriched, pagination: { page, per_page: perPage, total, total_pages: totalPages } });
     } catch (err) {
         // Log full error for diagnostics
         console.error('getMenuVerificationHistory error', err && err.stack ? err.stack : err);
@@ -678,6 +694,29 @@ const getVerifikasiDebug = async (req, res) => {
         return res.status(500).json({ message: 'Internal server error while reading verifikasi sample.' });
     }
 };
+// DEV-ONLY: public debug endpoint to inspect `verifikasi` table without auth
+const getVerifikasiDebugPublic = async (req, res) => {
+    try {
+        if (process.env.NODE_ENV !== 'development') {
+            return res.status(403).json({ message: 'Not allowed' });
+        }
+        const limit = Math.min(50, Math.max(5, Number(req.query.limit) || 10));
+        const { data, error } = await supabase.from('verifikasi').select('*').order('created_at', { ascending: false }).limit(limit);
+        if (error) {
+            console.error('[getVerifikasiDebugPublic] supabase fetch error', error);
+            return res.status(500).json({ message: 'Gagal mengambil sample verifikasi.', error: error.message || error });
+        }
+        const rows = data || [];
+        const keys = new Set();
+        rows.forEach(r => {
+            if (r && typeof r === 'object') Object.keys(r).forEach(k => keys.add(k));
+        });
+        return res.status(200).json({ sample_count: rows.length, keys: Array.from(keys), rows: rows.slice(0, 20) });
+    } catch (err) {
+        console.error('[getVerifikasiDebugPublic] error', err && err.stack ? err.stack : err);
+        return res.status(500).json({ message: 'Internal server error while reading verifikasi sample.' });
+    }
+};
 module.exports = {
     getPendingRestaurants,
     getPendingMenus,
@@ -690,5 +729,6 @@ module.exports = {
     getActiveMenus,
     getMenuVerificationHistory,
     getVerifikasiDebug,
+    getVerifikasiDebugPublic,
 };
 

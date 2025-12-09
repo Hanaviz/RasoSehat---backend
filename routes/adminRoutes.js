@@ -16,6 +16,10 @@ router.get('/restaurants/active', verifyToken, adminMiddleware, adminController.
 router.get('/restaurants/history', verifyToken, adminMiddleware, adminController.getRestaurantVerificationHistory);
 // Debugging: return sample of verifikasi table (admin only)
 router.get('/verifikasi/debug', verifyToken, adminMiddleware, adminController.getVerifikasiDebug);
+// DEV-ONLY public sample route (no auth) when NODE_ENV=development
+if (process.env.NODE_ENV === 'development') {
+	router.get('/verifikasi/debug-public', adminController.getVerifikasiDebugPublic);
+}
 router.put('/verify/restaurant/:id', verifyToken, adminMiddleware, adminController.verifyRestaurant);
 // New PATCH endpoint for admin verification (required flow)
 router.patch('/restaurants/:id/verify', verifyToken, adminMiddleware, adminController.patchVerifyRestaurant);

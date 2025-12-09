@@ -1,4 +1,6 @@
 const ReviewModel = require('../models/ReviewModel');
+const supabase = require('../supabase/supabaseClient');
+const path = require('path');
 
 // Tambah ulasan
 const tambahUlasan = async (req, res) => {
@@ -18,6 +20,26 @@ const tambahUlasan = async (req, res) => {
     // Untuk sekarang, izinkan multiple ulasan
 
     const reviewId = await ReviewModel.create({ user_id, menu_id, rating, komentar });
+
+    // If files were uploaded, persist records to review_photos
+    try {
+      const files = req.files || [];
+      if (files.length > 0) {
+        const insertRows = files.map(f => ({
+          ulasan_id: reviewId,
+          path: `/uploads/reviews/${f.filename}`,
+          storage_provider: 'local',
+          metadata: JSON.stringify({ originalname: f.originalname, mimetype: f.mimetype, size: f.size })
+        }));
+
+        const { data: photoData, error: photoErr } = await supabase.from('review_photos').insert(insertRows);
+        if (photoErr) {
+          console.error('Failed to insert review_photos', photoErr);
+        }
+      }
+    } catch (e) {
+      console.error('Error saving review photos:', e);
+    }
 
     // Update rating dan jumlah ulasan pada menu
     await ReviewModel.updateMenuRating(menu_id);

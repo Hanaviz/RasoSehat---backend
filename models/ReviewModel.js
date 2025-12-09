@@ -25,7 +25,7 @@ class ReviewModel {
       // Try to select related user name if foreign key relationship exists
       const { data, error } = await supabase
         .from('ulasan')
-        .select('rating, komentar, created_at, users(name)')
+        .select('id, rating, komentar, created_at, users(name), review_photos(path)')
         .eq('menu_id', menu_id)
         .order('created_at', { ascending: false });
 
@@ -48,8 +48,15 @@ class ReviewModel {
         return simpleData.map(r => ({ name: usersById[r.user_id]?.name || null, rating: r.rating, komentar: r.komentar, created_at: r.created_at }));
       }
 
-      // Map relational result to legacy shape
-      return (data || []).map(item => ({ name: item.users?.name || null, rating: item.rating, komentar: item.komentar, created_at: item.created_at }));
+      // Map relational result to legacy shape with photos
+      return (data || []).map(item => ({
+        id: item.id,
+        name: item.users?.name || null,
+        rating: item.rating,
+        komentar: item.komentar,
+        created_at: item.created_at,
+        photos: (item.review_photos || []).map(p => p.path)
+      }));
     } catch (e) {
       console.error('findByMenuId error', e);
       return [];
