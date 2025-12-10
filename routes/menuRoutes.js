@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const menuController = require('../controllers/MenuController');
 const { verifyToken } = require('../middleware/authmiddleware'); 
+const validateMenu = require('../middleware/validateMenu');
 const uploadMenu = require('../middleware/uploadMenuMiddleware');
 // Note: Middleware role seperti verifyPenjual bisa ditambahkan nanti
 
@@ -21,7 +22,9 @@ router.get('/featured', menuController.getFeatured ? menuController.getFeatured 
  * @description Pencarian dan filtering menu
  * @access Public
  */
-router.get('/search', menuController.search);
+// NOTE: legacy menu-specific search endpoint removed. Unified search is available
+// under `/api/search` (see routes/searchRoutes.js). This keeps a single
+// canonical search entrypoint for menus, restaurants and categories.
 
 /**
  * @route GET /api/menus/by-category/:key
@@ -63,7 +66,10 @@ router.get('/', menuController.list);
  * @access Protected
  */
 // Protected: create menu (upload foto)
-router.post('/', verifyToken, uploadMenu.single('foto'), menuController.createMenu);
+router.post('/', verifyToken, uploadMenu.single('foto'), validateMenu, menuController.createMenu);
+
+// Protected: update menu (owner or admin) - syncs pivots
+router.patch('/:id', verifyToken, uploadMenu.single('foto'), validateMenu, menuController.updateMenu);
 
 
 module.exports = router;

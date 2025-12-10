@@ -166,10 +166,10 @@ const submitFinal = async (req, res) => {
     const updated = await RestaurantModel.submitFinal(id);
     // Try to write a verifikasi record for audit trail using expected column names
     try {
-      await supabase.from('verifikasi').insert({ admin_id: null, tipe_objek: 'restoran', objek_id: id, status: 'pending', catatan: 'Pengajuan pendaftaran dikirim', tanggal_verifikasi: new Date().toISOString() });
+      await supabase.from('verifikasi_restoran').insert({ admin_id: null, restoran_id: id, status: 'pending', catatan: 'Pengajuan pendaftaran dikirim', tanggal_verifikasi: new Date().toISOString() });
     } catch (err) {
-      // Log and continue — verifikasi table might differ in some environments
-      console.warn('Could not insert verifikasi record (non-fatal):', err.message || err);
+      // Log and continue — target table might differ in some environments
+      console.warn('Could not insert verifikasi_restoran record (non-fatal):', err.message || err);
     }
 
     return res.json({ success: true, message: 'Pengajuan pendaftaran dikirim untuk verifikasi admin.', data: updated });

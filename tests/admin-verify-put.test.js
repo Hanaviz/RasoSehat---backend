@@ -24,7 +24,7 @@ describe('PUT /api/admin/verify/restaurant/:id integration', function () {
 
   before(async () => {
     // Cleanup by email if present
-    try { await supabase.from('verifikasi').delete().ilike('note', '%test-integration%'); } catch (e) {}
+    try { await supabase.from('verifikasi_restoran').delete().ilike('catatan', '%test-integration%'); } catch (e) {}
     try { await supabase.from('restorans').delete().ilike('nama_restoran', '%test-put-resto-%'); } catch (e) {}
     try { await supabase.from('users').delete().in('email', ['test-put-admin@example.com', 'test-put-user@example.com']); } catch (e) {}
 

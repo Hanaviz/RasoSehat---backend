@@ -115,6 +115,10 @@ app.get('/', (req, res) => {
     res.send('RasoSehat Backend API is running!');
 });
 
+// Error handler (must be last middleware)
+const errorHandler = require('./middleware/errorHandler');
+app.use(errorHandler);
+
 // Only start listening when not running tests. This allows test suites to import
 // the Express `app` without binding the server to a port (supertest will use
 // the app directly). When running `NODE_ENV=test` we skip listening.

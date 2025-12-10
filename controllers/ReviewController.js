@@ -5,21 +5,25 @@ const path = require('path');
 // Tambah ulasan
 const tambahUlasan = async (req, res) => {
   try {
-    const { menu_id, rating, komentar } = req.body;
+    let { menu_id, rating, komentar } = req.body;
     const user_id = req.user.id; // dari authmiddleware
 
+    // FormData posts fields as strings — coerce to numbers for validation
+    const menuIdNum = Number(menu_id);
+    const ratingNum = Number(rating);
+
     // Validasi
-    if (!menu_id || !rating) {
+    if (!menu_id || Number.isNaN(menuIdNum) || Number.isNaN(ratingNum)) {
       return res.status(400).json({ success: false, message: 'menu_id dan rating wajib diisi' });
     }
-    if (rating < 1 || rating > 5 || !Number.isInteger(rating)) {
+    if (ratingNum < 1 || ratingNum > 5 || !Number.isInteger(ratingNum)) {
       return res.status(400).json({ success: false, message: 'Rating harus angka bulat 1-5' });
     }
 
     // Cek apakah user sudah pernah ulas menu ini (opsional, tapi untuk mencegah duplikasi)
     // Untuk sekarang, izinkan multiple ulasan
 
-    const reviewId = await ReviewModel.create({ user_id, menu_id, rating, komentar });
+    const reviewId = await ReviewModel.create({ user_id, menu_id: menuIdNum, rating: ratingNum, komentar });
 
     // If files were uploaded, persist records to review_photos
     try {

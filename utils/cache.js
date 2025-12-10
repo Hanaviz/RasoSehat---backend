@@ -1,3 +1,52 @@
+const DEFAULT_TTL = 300; // seconds (5 minutes)
+let redisClient = null;
+let usingRedis = false;
+if (process.env.REDIS_URL) {
+  try {
+    const redis = require('redis');
+    redisClient = redis.createClient({ url: process.env.REDIS_URL });
+    redisClient.connect().catch(() => {});
+    usingRedis = true;
+  } catch (e) {
+    console.warn('Redis not available, falling back to in-memory cache', e && e.message ? e.message : e);
+    usingRedis = false;
+  }
+}
+
+const memoryCache = new Map();
+
+function _now() { return Math.floor(Date.now() / 1000); }
+
+async function get(key) {
+  if (usingRedis && redisClient) {
+    try {
+      const v = await redisClient.get(key);
+      return v ? JSON.parse(v) : null;
+    } catch (e) { return null; }
+  }
+  const entry = memoryCache.get(key);
+  if (!entry) return null;
+  if (entry.expiry <= _now()) { memoryCache.delete(key); return null; }
+  return entry.value;
+}
+
+async function set(key, value, ttl = DEFAULT_TTL) {
+  if (usingRedis && redisClient) {
+    try { await redisClient.set(key, JSON.stringify(value), { EX: ttl }); return true; } catch (e) { /* fallthrough */ }
+  }
+  memoryCache.set(key, { value, expiry: _now() + ttl });
+  return true;
+}
+
+async function del(key) {
+  if (usingRedis && redisClient) {
+    try { await redisClient.del(key); return true; } catch (e) { /* fallthrough */ }
+  }
+  memoryCache.delete(key);
+  return true;
+}
+
+module.exports = { get, set, del, usingRedis };
 /**
  * Simple cache helper: use Redis if REDIS_URL present, otherwise in-memory Map with TTL.
  */

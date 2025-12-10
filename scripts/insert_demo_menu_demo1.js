@@ -21,14 +21,14 @@ const supabase = require('../supabase/supabaseClient');
     const harga = 35000.00;
     const foto = 'https://via.placeholder.com/400x300.png?text=Demo+Menu+1';
 
+    const MenuModel = require('../models/MenuModel');
+    const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
     const insertPayload = {
       restoran_id: restoranId,
       kategori_id: kategoriId,
       nama_menu: namaMenu,
       deskripsi,
-      bahan_baku: null,
       metode_masak: null,
-      diet_claims: JSON.stringify(dietClaims),
       kalori: 400,
       protein: 12.0,
       gula: 0.0,
@@ -38,15 +38,16 @@ const supabase = require('../supabase/supabaseClient');
       harga,
       foto,
       status_verifikasi: 'disetujui',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
       slug
     };
-
-    const { data: insertRes, error: insertErr } = await supabase.from('menu_makanan').insert(insertPayload).select('id');
-    if (insertErr) throw insertErr;
-    const newId = insertRes && insertRes[0] ? insertRes[0].id : null;
-    console.log('Inserted demo menu id:', newId);
+    const created = await MenuModel.create(insertPayload);
+    if (!created || !created.id) throw new Error('Failed to insert demo menu');
+    // attach simple pivots
+    try {
+      await syncMenuBahan(created.id, ['demo ingredient']);
+      await syncMenuDietClaims(created.id, ['demo']);
+    } catch (e) { console.warn('pivot sync warning', e); }
+    console.log('Inserted demo menu id:', created.id);
 
     const { data: rowsRes, error: rowsErr } = await supabase.from('menu_makanan').select('id,nama_menu,slug,status_verifikasi').eq('id', newId).limit(1);
     if (rowsErr) throw rowsErr;

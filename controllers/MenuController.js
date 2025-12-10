@@ -1,11 +1,13 @@
 const MenuModel = require('../models/MenuModel');
 const RestaurantModel = require('../models/RestaurantModel');
 const path = require('path');
+const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
+const menuCreateController = require('./MenuCreateController');
 
 const list = async (req, res) => {
   try {
     // Return only approved menus for public listing
-    const rows = await MenuModel.findAllApproved ? await MenuModel.findAllApproved() : await MenuModel.findAll();
+    const rows = await (MenuModel.findAllApproved ? MenuModel.findAllApproved() : MenuModel.findAll());
     return res.json({ success: true, data: rows });
   } catch (err) {
     console.error('menu list error', err);
@@ -17,8 +19,7 @@ const getFeatured = async (req, res) => {
   try {
     const limit = Number(req.query.limit) || 8;
     const rows = await MenuModel.getFeaturedMenus(limit);
-    const safe = rows.map(r => ({ ...r, diet_claims: Array.isArray(r.diet_claims) ? r.diet_claims : (typeof r.diet_claims === 'string' ? (() => { try { return JSON.parse(r.diet_claims); } catch(e){ return String(r.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []) }));
-    return res.json({ success: true, data: safe });
+    return res.json({ success: true, data: rows });
   } catch (err) {
     console.error('getFeatured error', err);
     return res.status(500).json({ success: false, message: 'Gagal mengambil featured menus.' });
@@ -30,8 +31,7 @@ const search = async (req, res) => {
     const q = req.query.q || null;
     const categoryId = req.query.category_id || null;
     const rows = await MenuModel.searchAndFilter(q, categoryId, null, 50);
-    const safe = rows.map(r => ({ ...r, diet_claims: Array.isArray(r.diet_claims) ? r.diet_claims : (typeof r.diet_claims === 'string' ? (() => { try { return JSON.parse(r.diet_claims); } catch(e){ return String(r.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []) }));
-    return res.json({ success: true, data: safe });
+    return res.json({ success: true, data: rows });
   } catch (err) {
     console.error('search error', err);
     return res.status(500).json({ success: false, message: 'Gagal mencari menu.' });
@@ -44,7 +44,7 @@ const getByCategory = async (req, res) => {
     const limit = Number(req.query.limit) || 8;
     if (!key) return res.status(400).json({ success: false, message: 'Category key required' });
     console.log(`[MenuController.getByCategory] requested key='${key}', limit=${limit}`);
-    const rows = await MenuModel.findByDietClaim ? await MenuModel.findByDietClaim(key, limit) : [];
+    const rows = await (MenuModel.findByDietClaim ? MenuModel.findByDietClaim(key, limit) : []);
     console.log(`[MenuController.getByCategory] result count for key='${key}': ${Array.isArray(rows) ? rows.length : 0}`);
     return res.json({ success: true, data: rows });
   } catch (err) {
@@ -58,7 +58,6 @@ const getById = async (req, res) => {
     const id = req.params.id;
     const menu = await MenuModel.findById(id);
     if (!menu) return res.status(404).json({ success: false, message: 'Menu tidak ditemukan.' });
-    menu.diet_claims = Array.isArray(menu.diet_claims) ? menu.diet_claims : (typeof menu.diet_claims === 'string' ? (() => { try { return JSON.parse(menu.diet_claims); } catch(e){ return String(menu.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []);
     return res.json({ success: true, data: menu });
   } catch (err) {
     console.error('getById error', err);
@@ -73,7 +72,6 @@ const getBySlug = async (req, res) => {
     const menu = await MenuModel.findBySlug(slug);
     console.log('[DEBUG getBySlug] menu fetched:', menu ? { id: menu.id, nama_menu: menu.nama_menu, diet_claims: menu.diet_claims } : null);
     if (!menu) return res.status(404).json({ success: false, message: 'Menu tidak ditemukan.' });
-    menu.diet_claims = Array.isArray(menu.diet_claims) ? menu.diet_claims : (typeof menu.diet_claims === 'string' ? (() => { try { return JSON.parse(menu.diet_claims); } catch(e){ return String(menu.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []);
     return res.json({ success: true, data: menu });
   } catch (err) {
     console.error('getBySlug error', err);
@@ -124,9 +122,7 @@ const createMenu = async (req, res) => {
       kategori_id: body.kategori_id || null,
       nama_menu: body.nama_menu,
       deskripsi: body.deskripsi || null,
-      bahan_baku: body.bahan_baku || null,
       metode_masak: body.metode_masak || null,
-      diet_claims: null,
       kalori: body.kalori ? Number(body.kalori) : 0,
       protein: body.protein ? Number(body.protein) : 0,
       gula: body.gula ? Number(body.gula) : 0,
@@ -137,32 +133,36 @@ const createMenu = async (req, res) => {
       foto: null
     };
 
-    if (body.diet_claims) {
-      try {
-        const parsed = typeof body.diet_claims === 'string' ? JSON.parse(body.diet_claims) : body.diet_claims;
-        menuData.diet_claims = JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
-      } catch (e) {
-        const arr = String(body.diet_claims).split(',').map(s => s.trim()).filter(Boolean);
-        menuData.diet_claims = JSON.stringify(arr);
-      }
-    } else {
-      menuData.diet_claims = JSON.stringify([]);
-    }
-
     if (file) {
       menuData.foto = `/uploads/menu/${path.basename(file.path)}`;
     }
 
     if (!menuData.nama_menu) return res.status(400).json({ success: false, message: 'nama_menu wajib.' });
 
-    const created = await MenuModel.createMenu(menuData);
-    if (!created) return res.status(500).json({ success: false, message: 'Gagal membuat menu.' });
-    created.diet_claims = Array.isArray(created.diet_claims) ? created.diet_claims : (typeof created.diet_claims === 'string' ? (() => { try { return JSON.parse(created.diet_claims); } catch(e){ return String(created.diet_claims).split(',').map(s=>s.trim()).filter(Boolean); } })() : []);
-    return res.status(201).json({ success: true, data: created });
+    const created = await MenuModel.create(menuData);
+    if (!created || !created.id) return res.status(500).json({ success: false, message: 'Gagal membuat menu.' });
+
+    // Sync pivots
+    const bahanInput = body.bahan_baku || body.bahan || body.ingredients || null;
+    const dietInput = body.diet_claims || body.diet || null;
+    const parseList = (val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      try { return JSON.parse(val); } catch (e) { return String(val).split(',').map(s => s.trim()).filter(Boolean); }
+    };
+    try {
+      await Promise.all([
+        syncMenuBahan(created.id, parseList(bahanInput)),
+        syncMenuDietClaims(created.id, parseList(dietInput))
+      ]);
+    } catch (syncErr) { console.warn('Pivot sync warning', syncErr); }
+
+    const full = await MenuModel.getMenuDetail(created.id);
+    return res.status(201).json({ success: true, data: full });
   } catch (err) {
     console.error('createMenu error', err);
     return res.status(500).json({ success: false, message: 'Terjadi kesalahan saat membuat menu.' });
   }
 };
 
-module.exports = { list, getById, getBySlug, createMenu, getFeatured, search, getByCategory };
+module.exports = { list, getById, getBySlug, createMenu, getFeatured, search, getByCategory, updateMenu: menuCreateController.updateMenu };

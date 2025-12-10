@@ -104,15 +104,26 @@ const NotificationModel = require('../models/NotificationModel');
 const getPendingMenus = async (req, res) => {
     try {
         // Fetch pending menus; join with restaurans via model to keep compatibility
-        const { data: menus, error } = await supabase.from('menu_makanan').select('*').in('status_verifikasi', ['pending','menunggu']);
+        // Fetch pending menus and include pivot relations (bahan_baku + diet_claims)
+        const { data: menus, error } = await supabase.from('menu_makanan')
+            .select('id,restoran_id,kategori_id,nama_menu,deskripsi,harga,foto,status_verifikasi,created_at,updated_at,menu_bahan_baku(bahan_baku(id,nama)),menu_diet_claims(diet_claims_list(id,nama))')
+            .in('status_verifikasi', ['pending','menunggu']);
         if (error) { console.error('getPendingMenus supabase error', error); throw error; }
 
         const processedRows = (menus || []).map(row => ({
-            ...row,
-            diet_claims: row.diet_claims ? (typeof row.diet_claims === 'string' ? JSON.parse(row.diet_claims) : row.diet_claims) : []
+            id: row.id,
+            restoran_id: row.restoran_id,
+            nama_menu: row.nama_menu,
+            deskripsi: row.deskripsi,
+            harga: row.harga,
+            foto: row.foto,
+            status_verifikasi: row.status_verifikasi,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            bahan_baku: Array.isArray(row.menu_bahan_baku) ? row.menu_bahan_baku.map(m => m.bahan_baku) : [],
+            diet_claims: Array.isArray(row.menu_diet_claims) ? row.menu_diet_claims.map(m => m.diet_claims_list) : []
         }));
 
-        // Attach restaurant name where possible (best-effort) to preserve previous shape
         for (const m of processedRows) {
             try {
                 if (m.restoran_id) {
@@ -168,10 +179,15 @@ const getRestaurantVerificationHistory = async (req, res) => {
         let verRows = [];
         let total = 0;
         try {
-            const resp = await supabase.from('verifikasi')
-                .select('*', { count: 'exact' })
-                .order('created_at', { ascending: false })
-                .range(fromIndex, toIndex);
+            // Support optional filters: start_date, end_date, status
+            const startDate = req.query.start_date || null;
+            const endDate = req.query.end_date || null;
+            const statusFilter = req.query.status || null;
+            let q = supabase.from('verifikasi_restoran').select('*', { count: 'exact' }).order('tanggal_verifikasi', { ascending: false });
+            if (statusFilter) q = q.eq('status', statusFilter);
+            if (startDate) q = q.gte('tanggal_verifikasi', startDate);
+            if (endDate) q = q.lte('tanggal_verifikasi', endDate);
+            const resp = await q.range(fromIndex, toIndex);
             verRows = resp.data || [];
             total = typeof resp.count === 'number' ? resp.count : (Array.isArray(verRows) ? verRows.length : 0);
         } catch (e) {
@@ -183,18 +199,11 @@ const getRestaurantVerificationHistory = async (req, res) => {
         const possibleTypeKeys = ['target_type','tipe_target','jenis_target','type','target'];
         const possibleTargetIdKeys = ['target_id','objek_id','object_id','id_objek','targetid'];
 
-        const filteredVerRows = (verRows || []).filter(v => {
-            const typeVal = possibleTypeKeys.map(k => v && v[k]).find(Boolean);
-            if (typeVal) {
-                const tv = String(typeVal).toLowerCase();
-                return tv.includes('restor') || tv.includes('restoran') || tv.includes('store') || tv.includes('toko');
-            }
-            const tid = possibleTargetIdKeys.map(k => v && v[k]).find(id => typeof id !== 'undefined' && id !== null);
-            return typeof tid !== 'undefined' && tid !== null;
-        });
+        // verifikasi_restoran has explicit restoran_id column
+        const filteredVerRows = verRows || [];
 
         for (const v of filteredVerRows) {
-            const restoranId = possibleTargetIdKeys.map(k => v && v[k]).find(id => typeof id !== 'undefined' && id !== null) || null;
+            const restoranId = v.restoran_id || null;
             let nama_restoran = null;
             if (restoranId) {
                 try {
@@ -217,8 +226,8 @@ const getRestaurantVerificationHistory = async (req, res) => {
                 admin_id: v.admin_id,
                 admin_name,
                 status: v.status,
-                catatan: v.note || v.catatan || null,
-                verified_at: v.created_at || v.tanggal_verifikasi || null,
+                catatan: v.catatan || v.note || null,
+                verified_at: v.tanggal_verifikasi || v.created_at || null,
                 nama_restoran
             });
         }
@@ -279,10 +288,14 @@ const getMenuVerificationHistory = async (req, res) => {
                 let verRows, vError, resp;
                 try {
                     // Fetch verifikasi rows without filtering (some DB schemas lack target_type)
-                    resp = await supabase.from('verifikasi')
-                        .select('*', { count: 'exact' })
-                        .order('created_at', { ascending: false })
-                        .range(fromIndex, toIndex);
+                    const startDate = req.query.start_date || null;
+                    const endDate = req.query.end_date || null;
+                    const statusFilter = req.query.status || null;
+                    let mq = supabase.from('verifikasi_menu').select('*', { count: 'exact' }).order('tanggal_verifikasi', { ascending: false });
+                    if (statusFilter) mq = mq.eq('status', statusFilter);
+                    if (startDate) mq = mq.gte('tanggal_verifikasi', startDate);
+                    if (endDate) mq = mq.lte('tanggal_verifikasi', endDate);
+                    resp = await mq.range(fromIndex, toIndex);
                     verRows = resp.data || [];
                     vError = resp.error || null;
                 } catch (e) {
@@ -459,10 +472,10 @@ const verifyRestaurant = async (req, res) => {
             }
         }
 
-        // Audit log (non-fatal)
+        // Audit log into verifikasi_restoran (non-fatal)
         try {
             const adminId = req.user && req.user.id ? req.user.id : null;
-            await supabase.from('verifikasi').insert({ target_type: 'restoran', target_id: id, user_id: null, admin_id: adminId, status: dbStatus, note: note || null, created_at: new Date().toISOString() });
+            await supabase.from('verifikasi_restoran').insert({ admin_id: adminId, restoran_id: id, status: dbStatus, catatan: note || null, tanggal_verifikasi: new Date().toISOString() });
         } catch (e) { /* non-fatal */ }
 
         // Fetch restaurant row via model
@@ -514,10 +527,10 @@ const verifyMenu = async (req, res) => {
         const { data: upd, error: updErr } = await supabase.from('menu_makanan').update({ status_verifikasi: dbStatus, updated_at: new Date().toISOString() }).eq('id', id).select('id');
         if (updErr || !upd || upd.length === 0) return res.status(404).json({ message: 'Menu tidak ditemukan.' });
 
-        // Log verifikasi action for menu (non-fatal)
+        // Log verifikasi action for menu into verifikasi_menu (non-fatal)
         try {
             const adminId = req.user && req.user.id ? req.user.id : null;
-            await supabase.from('verifikasi').insert({ target_type: 'menu', target_id: id, user_id: null, admin_id: adminId, status: dbStatus, note: `Menu status updated by admin ${adminId}`, created_at: new Date().toISOString() });
+            await supabase.from('verifikasi_menu').insert({ admin_id: adminId, menu_id: id, status: dbStatus, catatan: `Menu status updated by admin ${adminId}`, tanggal_verifikasi: new Date().toISOString() });
         } catch (e) {
             console.warn('Could not insert verifikasi log for menu (non-fatal):', e.message || e);
         }
@@ -553,10 +566,10 @@ const patchVerifyRestaurant = async (req, res) => {
             return res.status(404).json({ message: 'Restoran tidak ditemukan.' });
         }
 
-        // Audit log
+        // Audit log into verifikasi_restoran
         try {
             const adminId = req.user && req.user.id ? req.user.id : null;
-            await supabase.from('verifikasi').insert({ target_type: 'restoran', target_id: id, user_id: null, admin_id: adminId, status: dbStatus, note: note || null, created_at: new Date().toISOString() });
+            await supabase.from('verifikasi_restoran').insert({ admin_id: adminId, restoran_id: id, status: dbStatus, catatan: note || null, tanggal_verifikasi: new Date().toISOString() });
         } catch (e) { /* non-fatal */ }
 
         // Fetch restaurant
@@ -675,8 +688,8 @@ const getRestaurantById = async (req, res) => {
 const getVerifikasiDebug = async (req, res) => {
     try {
         const limit = Math.min(50, Math.max(5, Number(req.query.limit) || 10));
-        // Fetch a sample page without filtering to inspect actual columns
-        const { data, error } = await supabase.from('verifikasi').select('*').order('created_at', { ascending: false }).limit(limit);
+        // Fetch a sample page from verifikasi_restoran to inspect actual columns
+        const { data, error } = await supabase.from('verifikasi_restoran').select('*').order('tanggal_verifikasi', { ascending: false }).limit(limit);
         if (error) {
             console.error('[getVerifikasiDebug] supabase fetch error', error);
             return res.status(500).json({ message: 'Gagal mengambil sample verifikasi.', error: error.message || error });
@@ -701,7 +714,7 @@ const getVerifikasiDebugPublic = async (req, res) => {
             return res.status(403).json({ message: 'Not allowed' });
         }
         const limit = Math.min(50, Math.max(5, Number(req.query.limit) || 10));
-        const { data, error } = await supabase.from('verifikasi').select('*').order('created_at', { ascending: false }).limit(limit);
+        const { data, error } = await supabase.from('verifikasi_restoran').select('*').order('tanggal_verifikasi', { ascending: false }).limit(limit);
         if (error) {
             console.error('[getVerifikasiDebugPublic] supabase fetch error', error);
             return res.status(500).json({ message: 'Gagal mengambil sample verifikasi.', error: error.message || error });

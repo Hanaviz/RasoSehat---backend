@@ -11,6 +11,7 @@ const slugify = (text) => {
 };
 
 const safeParseClaims = (val) => {
+    // kept for backward compatibility but new schema uses pivot tables
     let claims = [];
     try {
         claims = val ? (typeof val === 'object' ? val : JSON.parse(val)) : [];
@@ -21,107 +22,106 @@ const safeParseClaims = (val) => {
 };
 
 const MenuModel = {
+    // Hydrate a raw Supabase row (with nested joins) into canonical API shape
+    getMenuHydrated: (r) => {
+        if (!r) return null;
+        return {
+            id: r.id,
+            nama_menu: r.nama_menu,
+            slug: r.slug,
+            harga: r.harga,
+            foto: r.foto,
+            status_verifikasi: r.status_verifikasi,
+            kategori: r.kategori_makanan ? { id: r.kategori_id || null, nama_kategori: r.kategori_makanan?.nama_kategori || null } : (r.kategori_id ? { id: r.kategori_id } : null),
+            restoran: r.restorans ? { id: r.restorans.id || r.restoran_id, nama_restoran: r.restorans.nama_restoran || null, alamat: r.restorans.alamat || null, no_telepon: r.restorans.no_telepon || null, latitude: r.restorans.latitude || null, longitude: r.restorans.longitude || null, slug: r.restorans.slug || null } : (r.restoran_id ? { id: r.restoran_id } : null),
+            bahan_baku: Array.isArray(r.menu_bahan_baku) ? r.menu_bahan_baku.map(m => m.bahan_baku) : [],
+            diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : [],
+            nutrition: {
+                kalori: r.kalori || 0,
+                protein: r.protein || 0,
+                gula: r.gula || 0,
+                lemak: r.lemak || 0,
+                serat: r.serat || 0,
+                lemak_jenuh: r.lemak_jenuh || 0
+            },
+            deskripsi: r.deskripsi || null,
+            metode_masak: r.metode_masak || null,
+            created_at: r.created_at || null,
+            updated_at: r.updated_at || null,
+            kategori_id: r.kategori_id || null,
+            restoran_id: r.restoran_id || (r.restorans && r.restorans.id) || null
+        };
+    },
     // Get featured menus (preserve shape: include restoran.nama_restoran, restoran.alamat)
     getFeaturedMenus: async (limit = 10) => {
+        const cache = require('../utils/cache');
+        const cacheKey = `featured_menus:${limit}`;
+        try {
+            const cached = await cache.get(cacheKey);
+            if (cached) return cached;
+        } catch (e) { /* ignore cache errors */ }
         const { data, error } = await supabase
             .from('menu_makanan')
-            .select('id,nama_menu,deskripsi,harga,foto,kalori,protein,diet_claims,restorans(nama_restoran,alamat)')
+            .select('*, restorans(nama_restoran,alamat), kategori_makanan(nama_kategori), menu_bahan_baku(bahan_baku(id,nama,deskripsi,is_alergen)), menu_diet_claims(diet_claims_list(id,nama,deskripsi))')
             .eq('status_verifikasi', 'disetujui')
             .order('updated_at', { ascending: false })
             .limit(limit);
         if (error) { console.error('getFeaturedMenus error', error); return []; }
-        return (data || []).map(r => ({
-            id: r.id,
-            nama_menu: r.nama_menu,
-            deskripsi: r.deskripsi,
-            harga: r.harga,
-            foto: r.foto,
-            kalori: r.kalori,
-            protein: r.protein,
-            diet_claims: safeParseClaims(r.diet_claims),
-            nama_restoran: r.restorans?.nama_restoran || null,
-            alamat: r.restorans?.alamat || null
-        }));
+        const mapped = (data || []).map(r => MenuModel.getMenuHydrated(r));
+        try { await cache.set(cacheKey, mapped, 300); } catch (e) { /* ignore */ }
+        return mapped;
     },
 
-    // Search and filter
-    searchAndFilter: async (searchQuery, categoryId, minRating, limit = 20) => {
-        try {
-            let q = supabase
-                .from('menu_makanan')
-                .select('id,nama_menu,deskripsi,harga,foto,kalori,gula,lemak,diet_claims,restorans(nama_restoran,alamat,latitude,longitude,slug)')
-                .eq('status_verifikasi', 'disetujui');
-
-            if (searchQuery) {
-                const term = `%${searchQuery}%`;
-                q = q.or(`nama_menu.ilike.${term},deskripsi.ilike.${term}`);
-            }
-            if (categoryId) q = q.eq('kategori_id', categoryId);
-            q = q.limit(limit).order('updated_at', { ascending: false });
-
-            const { data, error } = await q;
-            if (error) { console.error('searchAndFilter error', error); return []; }
-            return (data || []).map(r => ({
-                id: r.id,
-                nama_menu: r.nama_menu,
-                deskripsi: r.deskripsi,
-                harga: r.harga,
-                foto: r.foto,
-                kalori: r.kalori,
-                gula: r.gula,
-                lemak: r.lemak,
-                diet_claims: safeParseClaims(r.diet_claims),
-                nama_restoran: r.restorans?.nama_restoran || null,
-                alamat: r.restorans?.alamat || null,
-                latitude: r.restorans?.latitude || null,
-                longitude: r.restorans?.longitude || null,
-                restaurant_slug: r.restorans?.slug || null
-            }));
-        } catch (e) {
-            console.error('searchAndFilter caught', e);
-            return [];
-        }
-    },
+    // Legacy menu-specific search logic removed. Use unified `/api/search`
+    // endpoint implemented in `controllers/searchController.js` instead.
 
     // List all menus with category and restoran info
     findAll: async () => {
         const { data, error } = await supabase
             .from('menu_makanan')
-            .select('id,restoran_id,kategori_id,nama_menu,deskripsi,harga,foto,slug,status_verifikasi,diet_claims,kalori,protein,gula,lemak,serat,lemak_jenuh,kategori_makanan(nama_kategori),restorans(nama_restoran,alamat)')
+            .select('*, restorans(nama_restoran,alamat), kategori_makanan(nama_kategori), menu_bahan_baku(bahan_baku(id,nama)), menu_diet_claims(diet_claims_list(id,nama))')
             .order('updated_at', { ascending: false });
         if (error) { console.error('findAll error', error); return []; }
-        return (data || []).map(r => ({
-            id: r.id,
-            restoran_id: r.restoran_id,
-            kategori_id: r.kategori_id,
-            nama_menu: r.nama_menu,
-            deskripsi: r.deskripsi,
-            harga: r.harga,
-            foto: r.foto,
-            slug: r.slug,
-            status_verifikasi: r.status_verifikasi,
-            diet_claims: safeParseClaims(r.diet_claims),
-            kalori: r.kalori,
-            protein: r.protein,
-            gula: r.gula,
-            lemak: r.lemak,
-            serat: r.serat,
-            lemak_jenuh: r.lemak_jenuh,
-            nama_kategori: r.kategori_makanan?.nama_kategori || null,
-            nama_restoran: r.restorans?.nama_restoran || null,
-            alamat: r.restorans?.alamat || null
-        }));
+        return (data || []).map(r => MenuModel.getMenuHydrated(r));
     },
 
     // List all approved menus
     findAllApproved: async () => {
         const { data, error } = await supabase
             .from('menu_makanan')
-            .select('id,restoran_id,kategori_id,nama_menu,deskripsi,harga,foto,slug,status_verifikasi,diet_claims,kalori,protein,gula,lemak,serat,lemak_jenuh,kategori_makanan(nama_kategori),restorans(nama_restoran,alamat)')
+            .select('*, restorans(nama_restoran,alamat), kategori_makanan(nama_kategori), menu_bahan_baku(bahan_baku(id,nama)), menu_diet_claims(diet_claims_list(id,nama))')
             .eq('status_verifikasi', 'disetujui')
             .order('updated_at', { ascending: false });
         if (error) { console.error('findAllApproved error', error); return []; }
-        return (data || []).map(r => ({
+        return (data || []).map(r => MenuModel.getMenuHydrated(r));
+    },
+
+    // Detail menu (approved)
+    getMenuDetail: async (id) => {
+        const { data, error } = await supabase
+            .from('menu_makanan')
+            .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug), kategori_makanan(nama_kategori), menu_bahan_baku(bahan_baku(id,nama,deskripsi,is_alergen)), menu_diet_claims(diet_claims_list(id,nama,deskripsi))')
+            .eq('id', id)
+            .limit(1)
+            .single();
+        if (error) { console.error('getMenuDetail error', error); return null; }
+        const r = data;
+        if (!r) return null;
+        return MenuModel.getMenuHydrated(r);
+    },
+
+    // Variant: return menu detail regardless of status_verifikasi (for create/update flows)
+    getMenuDetailById: async (id) => {
+        const { data, error } = await supabase
+            .from('menu_makanan')
+            .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug), kategori_makanan(nama_kategori), menu_bahan_baku(bahan_baku(id,nama,deskripsi,is_alergen)), menu_diet_claims(diet_claims_list(id,nama,deskripsi))')
+            .eq('id', id)
+            .limit(1)
+            .single();
+        if (error) { console.error('getMenuDetailById error', error); return null; }
+        const r = data;
+        if (!r) return null;
+        return {
             id: r.id,
             restoran_id: r.restoran_id,
             kategori_id: r.kategori_id,
@@ -131,75 +131,85 @@ const MenuModel = {
             foto: r.foto,
             slug: r.slug,
             status_verifikasi: r.status_verifikasi,
-            diet_claims: safeParseClaims(r.diet_claims),
             kalori: r.kalori,
             protein: r.protein,
             gula: r.gula,
             lemak: r.lemak,
             serat: r.serat,
             lemak_jenuh: r.lemak_jenuh,
-            nama_kategori: r.kategori_makanan?.nama_kategori || null,
             nama_restoran: r.restorans?.nama_restoran || null,
-            alamat: r.restorans?.alamat || null
-        }));
-    },
-
-    // Detail menu (approved)
-    getMenuDetail: async (id) => {
-        const { data, error } = await supabase
-            .from('menu_makanan')
-            .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude)')
-            .eq('id', id)
-            .eq('status_verifikasi', 'disetujui')
-            .limit(1)
-            .single();
-        if (error) { console.error('getMenuDetail error', error); return null; }
-        const r = data;
-        if (!r) return null;
-        return { ...r, diet_claims: safeParseClaims(r.diet_claims), nama_restoran: r.restorans?.nama_restoran || null, alamat: r.restorans?.alamat || null, no_telepon: r.restorans?.no_telepon || null, latitude: r.restorans?.latitude || null, longitude: r.restorans?.longitude || null };
+            alamat: r.restorans?.alamat || null,
+            no_telepon: r.restorans?.no_telepon || null,
+            latitude: r.restorans?.latitude || null,
+            longitude: r.restorans?.longitude || null,
+            kategori: r.kategori_makanan?.nama_kategori || null,
+            bahan_baku: Array.isArray(r.menu_bahan_baku) ? r.menu_bahan_baku.map(m => m.bahan_baku) : [],
+            diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : []
+        };
     },
 
     // Get menu by slug with fallbacks
     getMenuBySlug: async (slug) => {
-        // try slug column
+        // Try fetching menu by slug (only approved menus)
         try {
             const { data, error } = await supabase
                 .from('menu_makanan')
-                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug)')
+                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug), kategori_makanan(nama_kategori), menu_bahan_baku(bahan_baku(id,nama,deskripsi,is_alergen)), menu_diet_claims(diet_claims_list(id,nama,deskripsi))')
                 .eq('slug', slug)
                 .eq('status_verifikasi', 'disetujui')
                 .limit(1)
                 .single();
-            if (!error && data) return { ...data, diet_claims: safeParseClaims(data.diet_claims) };
+            if (!error && data) {
+                const r = data;
+                return {
+                    id: r.id,
+                    restoran_id: r.restoran_id,
+                    kategori_id: r.kategori_id,
+                    nama_menu: r.nama_menu,
+                    deskripsi: r.deskripsi,
+                    harga: r.harga,
+                    foto: r.foto,
+                    slug: r.slug,
+                    status_verifikasi: r.status_verifikasi,
+                    nama_restoran: r.restorans?.nama_restoran || null,
+                    alamat: r.restorans?.alamat || null,
+                    kategori: r.kategori_makanan?.nama_kategori || null,
+                    bahan_baku: Array.isArray(r.menu_bahan_baku) ? r.menu_bahan_baku.map(m => m.bahan_baku) : [],
+                    diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : []
+                };
+            }
         } catch (e) { /* continue to fallback */ }
 
-        // fallback: normalized name
+        // fallback: normalized name -> try matching by transformed name
         const nameCandidate = String(slug).replace(/-/g, ' ');
         try {
-            const { data: normData, error: normErr } = await supabase
+            const { data: results } = await supabase
                 .from('menu_makanan')
-                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug)')
-                .filter("LOWER(REPLACE(nama_menu,' ','-'))", 'eq', nameCandidate.toLowerCase())
-                .eq('status_verifikasi', 'disetujui')
-                .limit(1);
-            if (normErr) {
-                // Some PostgREST installations may not accept complex filter; fall back to simple
-            } else if (normData && normData.length) return { ...normData[0], diet_claims: safeParseClaims(normData[0].diet_claims) };
-        } catch (e) { /* ignore */ }
-
-        // final fallback: exact name
-        try {
-            const { data: exactData, error: exactErr } = await supabase
-                .from('menu_makanan')
-                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug)')
+                .select('*, restorans(nama_restoran,alamat,no_telepon,latitude,longitude,slug), kategori_makanan(nama_kategori), menu_bahan_baku(bahan_baku(id,nama)), menu_diet_claims(diet_claims_list(id,nama))')
                 .ilike('nama_menu', nameCandidate)
                 .eq('status_verifikasi', 'disetujui')
                 .limit(1);
-            if (exactErr) return null;
-            return exactData && exactData.length ? { ...exactData[0], diet_claims: safeParseClaims(exactData[0].diet_claims) } : null;
-        } catch (e) {
-            return null;
-        }
+            if (results && results.length) {
+                const r = results[0];
+                return {
+                    id: r.id,
+                    restoran_id: r.restoran_id,
+                    kategori_id: r.kategori_id,
+                    nama_menu: r.nama_menu,
+                    deskripsi: r.deskripsi,
+                    harga: r.harga,
+                    foto: r.foto,
+                    slug: r.slug,
+                    status_verifikasi: r.status_verifikasi,
+                    nama_restoran: r.restorans?.nama_restoran || null,
+                    alamat: r.restorans?.alamat || null,
+                    kategori: r.kategori_makanan?.nama_kategori || null,
+                    bahan_baku: Array.isArray(r.menu_bahan_baku) ? r.menu_bahan_baku.map(m => m.bahan_baku) : [],
+                    diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : []
+                };
+            }
+        } catch (e) { /* ignore */ }
+        return null;
     }
 };
 
@@ -207,114 +217,53 @@ const MenuModel = {
 MenuModel.findByDietClaim = async (claimKey, limit = 12) => {
     if (!claimKey) return [];
     try {
-        // Dual matching strategy with localized display-name mapping and quoted JSON-as-text matching.
-        const tryCandidates = [];
+        // New implementation: use diet_claims_list and pivot table menu_diet_claims
         const raw = String(claimKey).trim();
-        const slugifyCandidate = (txt) => txt.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]+/g, '').replace(/\-+/g, '-').replace(/^\-|\-$/g, '');
-        const underscored = raw.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]+/g, '');
-        const hyphen = slugifyCandidate(raw);
-        // Base attempts: original key, hyphen, underscored
-        tryCandidates.push({ type: 'raw', value: raw });
-        if (hyphen && hyphen !== raw) tryCandidates.push({ type: 'hyphen', value: hyphen });
-        if (underscored && underscored !== raw && underscored !== hyphen) tryCandidates.push({ type: 'underscore', value: underscored });
-
-        // Map known canonical keys to localized/display names to increase match chance
-        const claimDisplayMap = {
-            'low_sugar': ['Rendah Gula', 'Rendah Gula'],
-            'low_calorie': ['Rendah Kalori', 'Rendah Kalori'],
-            'high_protein': ['Tinggi Protein', 'Tinggi Protein'],
-            'high_fiber': ['Tinggi Serat', 'Tinggi Serat'],
-            'balanced': ['Seimbang', 'Seimbang'],
-            'vegan': ['Vegan', 'Vegan'],
-            'low_saturated_fat': ['Rendah Lemak Jenuh', 'Rendah Lemak Jenuh'],
-            'kids_friendly': ['Ramah Anak', 'Ramah Anak'],
-            // include several common synonyms/variants for better matching
-            'gluten_free': ['Bebas Gluten', 'Tanpa Gluten', 'Gluten Free', 'Gluten-Free'],
-            'organic': ['Organik', 'Bebas Pestisida', 'Tanpa Pestisida']
-        };
-        const displayCandidates = claimDisplayMap[raw] || [];
-
-        // Helper to run an ilike query and return normalized rows if any
-        const runIlike = async (patternDesc, pattern) => {
-            try {
-                console.log(`[MenuModel.findByDietClaim] ilike attempt pattern='${patternDesc}' patternRaw='${pattern}' limit=${limit}`);
-                const { data, error } = await supabase
-                    .from('menu_makanan')
-                    .select('id,nama_menu,deskripsi,harga,foto,kalori,protein,diet_claims,restorans(nama_restoran,slug),rating,reviews,slug,kategori_id,status_verifikasi')
-                    .eq('status_verifikasi', 'disetujui')
-                    .ilike('diet_claims', pattern)
-                    .order('rating', { ascending: false })
-                    .order('reviews', { ascending: false })
-                    .limit(limit);
-                if (error) {
-                    console.warn(`[MenuModel.findByDietClaim] ilike query error for pattern '${pattern}':`, error.message || error);
-                    return null;
-                }
-                if (data && data.length) {
-                    const rows = (data || []).map(r => ({
-                        id: r.id,
-                        nama_menu: r.nama_menu,
-                        deskripsi: r.deskripsi,
-                        harga: r.harga,
-                        foto: r.foto,
-                        kalori: r.kalori,
-                        protein: r.protein,
-                        diet_claims: safeParseClaims(r.diet_claims),
-                        nama_restoran: r.restorans?.nama_restoran || null,
-                        restaurant_slug: r.restorans?.slug || null,
-                        rating: r.rating || 0,
-                        reviews: r.reviews || 0,
-                        slug: r.slug,
-                        kategori_id: r.kategori_id,
-                        status_verifikasi: r.status_verifikasi
-                    }));
-                    console.log(`[MenuModel.findByDietClaim] ilike matched pattern='${patternDesc}' -> ${rows.length} rows`);
-                    return rows;
-                }
-                return null;
-            } catch (e) {
-                console.error('[MenuModel.findByDietClaim] ilike attempt threw', e && e.message ? e.message : e);
-                return null;
-            }
-        };
-
-        // First try base candidates (raw/hyphen/underscore)
-        for (const cand of tryCandidates) {
-            const pattern = `%${cand.value}%`;
-            const res = await runIlike(cand.type + ':' + cand.value, pattern);
-            if (res && res.length) return res;
-            console.log(`[MenuModel.findByDietClaim] no rows for attempt '${cand.value}'`);
+        const patterns = [`%${raw}%`, `%${raw.toLowerCase()}%`, `%${raw.replace(/\s+/g,'-')}%`];
+        // find matching diet claim ids
+        let claimIds = [];
+        for (const p of patterns) {
+            const { data: drows, error } = await supabase.from('diet_claims_list').select('id').ilike('nama', p).limit(50);
+            if (error) { console.warn('findByDietClaim diet_claims_list lookup error', error); continue; }
+            if (drows && drows.length) claimIds.push(...drows.map(d => d.id));
         }
+        // de-duplicate
+        claimIds = Array.from(new Set(claimIds));
+        if (!claimIds.length) return [];
 
-        // Next try display-name candidates, including quoted patterns to match JSON-as-text
-        for (const disp of displayCandidates) {
-            // unquoted
-            const res1 = await runIlike('display_unquoted:' + disp, `%${disp}%`);
-            if (res1 && res1.length) return res1;
-            // quoted (to match JSON text like ["Rendah Gula"])
-            const quotedPattern = `%"${disp}"%`;
-            const res2 = await runIlike('display_quoted:' + disp, quotedPattern);
-            if (res2 && res2.length) return res2;
-            console.log(`[MenuModel.findByDietClaim] no rows for display attempt '${disp}'`);
-        }
+        // find menu ids attached to these claims
+        const { data: pivotRows, error: pivotErr } = await supabase.from('menu_diet_claims').select('menu_id').in('claim_id', claimIds);
+        if (pivotErr) { console.error('findByDietClaim pivot fetch error', pivotErr); return []; }
+        const menuIds = Array.from(new Set((pivotRows || []).map(r => r.menu_id))).slice(0, 200);
+        if (!menuIds.length) return [];
 
-        // As an extra fallback, try to match JSON key fields if diet_claims is stored as array of objects
-        // e.g. [{"key":"gluten_free","display":"Bebas Gluten"}]
-        const jsonKeyCandidates = [];
-        jsonKeyCandidates.push(`%\"key\":\"${raw}\"%`);
-        if (underscored) jsonKeyCandidates.push(`%\"key\":\"${underscored}\"%`);
-        if (hyphen) jsonKeyCandidates.push(`%\"key\":\"${hyphen}\"%`);
-        // also try simple quoted raw (no property name) as some stores are just arrays of strings
-        jsonKeyCandidates.push(`%\"${raw}\"%`);
-
-        for (const jp of jsonKeyCandidates) {
-            const resj = await runIlike('json_key_pattern:' + jp, jp);
-            if (resj && resj.length) return resj;
-            console.log(`[MenuModel.findByDietClaim] no rows for json-key attempt pattern '${jp}'`);
-        }
-
-        console.log(`[MenuModel.findByDietClaim] no matches for '${claimKey}'`);
-        return [];
+        // fetch menus with relations
+        const { data: menus, error: menusErr } = await supabase.from('menu_makanan')
+            .select('id,nama_menu,deskripsi,harga,foto,kalori,protein,restorans(nama_restoran,slug),rating,reviews,slug,kategori_id,status_verifikasi,kategori_makanan(nama_kategori),menu_bahan_baku(bahan_baku(id,nama)),menu_diet_claims(diet_claims_list(id,nama))')
+            .in('id', menuIds)
+            .eq('status_verifikasi', 'disetujui')
+            .order('rating', { ascending: false })
+            .order('reviews', { ascending: false })
+            .limit(limit);
+        if (menusErr) { console.error('findByDietClaim menu fetch error', menusErr); return []; }
+        return (menus || []).map(r => ({
+            id: r.id,
+            nama_menu: r.nama_menu,
+            deskripsi: r.deskripsi,
+            harga: r.harga,
+            foto: r.foto,
+            kalori: r.kalori,
+            protein: r.protein,
+            diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : [],
+            nama_restoran: r.restorans?.nama_restoran || null,
+            restaurant_slug: r.restorans?.slug || null,
+            rating: r.rating || 0,
+            reviews: r.reviews || 0,
+            slug: r.slug,
+            kategori_id: r.kategori_id,
+            kategori: r.kategori_makanan?.nama_kategori || null,
+            status_verifikasi: r.status_verifikasi
+        }));
     } catch (e) {
         console.error('findByDietClaim caught', e);
         return [];
@@ -339,9 +288,7 @@ MenuModel.create = async (data) => {
         kategori_id: data.kategori_id || null,
         nama_menu: data.nama_menu || null,
         deskripsi: data.deskripsi || null,
-        bahan_baku: data.bahan_baku || null,
         metode_masak: data.metode_masak || null,
-        diet_claims: data.diet_claims || '[]',
         kalori: data.kalori || 0,
         protein: data.protein || 0,
         gula: data.gula || 0,
@@ -359,9 +306,26 @@ MenuModel.create = async (data) => {
     if (insertErr) { console.error('create menu error', insertErr); throw insertErr; }
     const insertedId = inserted?.id || null;
     if (!insertedId) return null;
-    const { data: row, error: rowErr } = await supabase.from('menu_makanan').select('*, restorans(nama_restoran,alamat)').eq('id', insertedId).limit(1).single();
-    if (rowErr) { console.error('fetch inserted menu error', rowErr); return null; }
-    return { ...row, diet_claims: safeParseClaims(row.diet_claims) };
+    const full = await MenuModel.getMenuDetailById(insertedId);
+    try { const cache = require('../utils/cache'); await cache.del('featured_menus:10'); } catch (e) { }
+    return full;
+};
+
+// Update an existing menu row and return expanded object
+MenuModel.updateMenu = async (id, data) => {
+    if (!id) throw new Error('Missing id');
+    // Allowed fields to update
+    const allowed = ['kategori_id','nama_menu','deskripsi','metode_masak','kalori','protein','gula','lemak','serat','lemak_jenuh','harga','foto','status_verifikasi'];
+    const payload = {};
+    for (const k of allowed) {
+        if (typeof data[k] !== 'undefined') payload[k] = data[k];
+    }
+    payload.updated_at = new Date().toISOString();
+
+    const { data: updated, error } = await supabase.from('menu_makanan').update(payload).eq('id', id).select('id').limit(1).single();
+    if (error) { console.error('updateMenu error', error); throw error; }
+    try { const cache = require('../utils/cache'); await cache.del('featured_menus:10'); } catch (e) { }
+    return MenuModel.getMenuDetailById(id);
 };
 
 MenuModel.findBySlug = async (slug) => {

@@ -27,9 +27,17 @@ async function run() {
 
     console.log('Seeding demo menu (Buddha Bowl)...');
     const slug = 'buddha-bowl';
-    const { data: mres, error: mErr } = await supabase.from('menu_makanan').insert({ restoran_id: restoranId, nama_menu: 'Buddha Bowl', deskripsi: 'Bowl sehat berisi sayuran, biji-bijian, dan protein nabati.', harga: 45000, foto: 'https://via.placeholder.com/400x300.png?text=Buddha+Bowl', kalori: 520, protein: 20, diet_claims: null, kategori_id: kategoriId, status_verifikasi: 'disetujui', slug, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }).select('id');
-    if (mErr) throw mErr;
-    console.log('Inserted menu_makanan id=', mres && mres[0] ? mres[0].id : null);
+    const MenuModel = require('../models/MenuModel');
+    const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
+    const menuPayload = { restoran_id: restoranId, nama_menu: 'Buddha Bowl', deskripsi: 'Bowl sehat berisi sayuran, biji-bijian, dan protein nabati.', harga: 45000, foto: 'https://via.placeholder.com/400x300.png?text=Buddha+Bowl', kalori: 520, protein: 20, kategori_id: kategoriId, status_verifikasi: 'disetujui', slug };
+    const created = await MenuModel.create(menuPayload);
+    if (!created || !created.id) throw new Error('Failed to create demo menu');
+    // attach sample bahan and diet claims via pivot helper
+    try {
+      await syncMenuBahan(created.id, ['beras','sayur','tofu']);
+      await syncMenuDietClaims(created.id, ['vegetarian','high_fiber']);
+    } catch (e) { console.warn('seed pivot sync warning', e); }
+    console.log('Inserted menu_makanan id=', created.id);
 
     console.log('Seeding complete.');
     process.exit(0);

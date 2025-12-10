@@ -33,7 +33,7 @@ describe('Admin restaurant approval integration', function () {
 
   before(async () => {
     // Clean potential leftover test records by email
-    try { await supabase.from('verifikasi').delete().ilike('note', '%test-integration%'); } catch (e) {}
+    try { await supabase.from('verifikasi_restoran').delete().ilike('catatan', '%test-integration%'); } catch (e) {}
     try { await supabase.from('restorans').delete().ilike('nama_restoran', '%test-resto-%'); } catch (e) {}
     try { await supabase.from('users').delete().in('email', ['test-admin@example.com', 'test-user@example.com']); } catch (e) {}
 
