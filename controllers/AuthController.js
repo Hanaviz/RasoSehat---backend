@@ -89,10 +89,16 @@ const verify = async (req, res) => {
         return res.status(200).json({ user: { id: decoded.id, name: decoded.name, role: decoded.role } });
 
     } catch (error) {
-        console.error('Error saat memverifikasi token:', error);
-        if (error && (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError')) {
+        // Don't print full stack for expected JWT errors
+        if (error && error.name === 'TokenExpiredError') {
+            console.warn('Token verification failed: token expired');
+            return res.status(401).json({ message: 'Token kadaluarsa.' });
+        }
+        if (error && error.name === 'JsonWebTokenError') {
+            console.warn('Token verification failed: invalid token');
             return res.status(401).json({ message: 'Token tidak valid.' });
         }
+        console.error('Error saat memverifikasi token (unexpected):', error && error.stack ? error.stack : error);
         return res.status(500).json({ message: 'Gagal memverifikasi token.' });
     }
 };
@@ -111,7 +117,13 @@ const getProfile = async (req, res) => {
         const { password, ...sanitized } = user;
         return res.status(200).json({ data: sanitized });
     } catch (error) {
-        console.error('getProfile error', error);
+        if (error && error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Token kadaluarsa.' });
+        }
+        if (error && error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ message: 'Token tidak valid.' });
+        }
+        console.error('getProfile error', error && error.stack ? error.stack : error);
         return res.status(500).json({ message: 'Gagal mengambil profil.' });
     }
 };
@@ -136,7 +148,13 @@ const updateProfile = async (req, res) => {
         const { password, ...sanitized } = updated || {};
         return res.status(200).json({ message: 'Profil diperbarui.', data: sanitized });
     } catch (error) {
-        console.error('updateProfile error', error);
+        if (error && error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Token kadaluarsa.' });
+        }
+        if (error && error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ message: 'Token tidak valid.' });
+        }
+        console.error('updateProfile error', error && error.stack ? error.stack : error);
         return res.status(500).json({ message: 'Gagal mengupdate profil.' });
     }
 };
@@ -193,7 +211,13 @@ const uploadAvatar = async (req, res) => {
                 const { password: _p, ...sanitized } = updated || {};
                 return res.status(200).json({ message: 'Avatar terunggah.', avatar: avatarUrlToSave, data: sanitized });
     } catch (error) {
-        console.error('uploadAvatar error', error);
+        if (error && error.name === 'TokenExpiredError') {
+            return res.status(401).json({ message: 'Token kadaluarsa.' });
+        }
+        if (error && error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ message: 'Token tidak valid.' });
+        }
+        console.error('uploadAvatar error', error && error.stack ? error.stack : error);
         return res.status(500).json({ message: 'Gagal mengunggah avatar.' });
     }
 };

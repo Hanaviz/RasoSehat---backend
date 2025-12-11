@@ -6,7 +6,8 @@
   "scripts": {
     "test": "cross-env NODE_ENV=test mocha --exit tests/**/*.test.js",
     "test:watch": "cross-env NODE_ENV=test mocha --watch tests/**/*.test.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "start": "node server.js"
   },
   "keywords": [],
   "author": "",

@@ -23,21 +23,21 @@ if (process.env.NODE_ENV !== 'production') {
 // or fallback to the value in env if provided. This avoids CORS failures when
 // Vite uses a different port (5173/5174/etc.). In production this should be
 // tightened to the proper origin or handled by a reverse proxy.
-const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin) return callback(null, true); // allow server-to-server / curl requests
-        try {
-            const url = new URL(origin);
-            if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return callback(null, true);
-        } catch (e) {
-            // ignore parse errors
-        }
-        // Allow explicitly configured origin via env var if set
-        if (process.env.CORS_ORIGIN && origin === process.env.CORS_ORIGIN) return callback(null, true);
-        return callback(new Error('Not allowed by CORS'));
-    }
-};
-app.use(cors(corsOptions)); 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://raso-sehat.vercel.app", // GANTI dengan domain frontend Vercel kamu
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow server-to-server / mobile apps
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+}));
+ 
 app.use(bodyParser.json());
 
 const categoryRoutes = require('./routes/categoryRoutes');
