@@ -5,6 +5,16 @@ const router = express.Router();
 const authController = require('../controllers/AuthController');
 const uploadAvatar = require('../middleware/uploadAvatarMiddleware');
 
+// Dev: log entry to this router so we can see when /api/auth/* is hit
+if (process.env.NODE_ENV !== 'production') {
+	router.use((req, res, next) => {
+		try {
+			console.debug('[authRoutes] incoming', req.method, req.originalUrl, 'bodyKeys:', Object.keys(req.body || {}));
+		} catch (e) {}
+		next();
+	});
+}
+
 router.post('/register', authController.register); // Untuk frontend SignUp.jsx
 router.post('/login', authController.login);   // Untuk frontend Signin.jsx
 router.get('/user', authController.verify);    // Verifikasi token dan ambil data user

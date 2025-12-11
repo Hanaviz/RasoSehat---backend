@@ -23,20 +23,45 @@ if (process.env.NODE_ENV !== 'production') {
 // or fallback to the value in env if provided. This avoids CORS failures when
 // Vite uses a different port (5173/5174/etc.). In production this should be
 // tightened to the proper origin or handled by a reverse proxy.
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "https://raso-sehat.vercel.app", // GANTI dengan domain frontend Vercel kamu
+// Build allowed origins list (starts with common local dev hosts)
+const allowedOrigins = new Set([
+    'http://localhost:5173',
+    'http://localhost:5174',
+]);
+
+// Allow configuration via environment variables (useful for Vercel, Railway, etc.)
+const envFrontendCandidates = [
+    process.env.FRONTEND_URL,
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+    process.env.VERCEL_FRONTEND_URL,
+    process.env.DEPLOYED_FRONTEND_URL,
+    process.env.RAILWAY_STATIC_URL,
+    process.env.NEXT_PUBLIC_FRONTEND_URL,
 ];
+envFrontendCandidates.forEach((u) => {
+    if (u && typeof u === 'string') allowedOrigins.add(u);
+});
+
+// If a Vite/Vercel style frontend domain is present in .env (common), include it
+if (process.env.FRONTEND_DOMAIN) allowedOrigins.add(process.env.FRONTEND_DOMAIN);
+
+// Convert to array for the CORS middleware
+const allowedOriginsArray = Array.from(allowedOrigins);
 
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow server-to-server / mobile apps
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true); // allow server-to-server / mobile apps
+        if (allowedOriginsArray.includes(origin)) return callback(null, true);
+        // For debugging in non-production, print the rejected origin
+        if (process.env.NODE_ENV !== 'production') console.warn('[CORS] Rejected origin:', origin);
+        return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
 }));
+
+if (process.env.NODE_ENV !== 'production') {
+    console.log('[CORS] allowed origins:', allowedOriginsArray);
+}
  
 app.use(bodyParser.json());
 
