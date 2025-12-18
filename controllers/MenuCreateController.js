@@ -38,12 +38,15 @@ const createMenu = async (req, res) => {
       nama_menu: body.nama_menu,
       deskripsi: body.deskripsi || null,
       metode_masak: body.metode_masak || null,
-      kalori: body.kalori ? Number(body.kalori) : 0,
-      protein: body.protein ? Number(body.protein) : 0,
-      gula: body.gula ? Number(body.gula) : 0,
-      lemak: body.lemak ? Number(body.lemak) : 0,
-      serat: body.serat ? Number(body.serat) : 0,
-      lemak_jenuh: body.lemak_jenuh ? Number(body.lemak_jenuh) : 0,
+      kalori: (typeof body.kalori !== 'undefined' && body.kalori !== '') ? Number(body.kalori) : null,
+      protein: (typeof body.protein !== 'undefined' && body.protein !== '') ? Number(body.protein) : null,
+      gula: (typeof body.gula !== 'undefined' && body.gula !== '') ? Number(body.gula) : null,
+      lemak: (typeof body.lemak !== 'undefined' && body.lemak !== '') ? Number(body.lemak) : null,
+      serat: (typeof body.serat !== 'undefined' && body.serat !== '') ? Number(body.serat) : null,
+      lemak_jenuh: (typeof body.lemak_jenuh !== 'undefined' && body.lemak_jenuh !== '') ? Number(body.lemak_jenuh) : null,
+      karbohidrat: (typeof body.karbohidrat !== 'undefined' && body.karbohidrat !== '') ? Number(body.karbohidrat) : null,
+      kolesterol: (typeof body.kolesterol !== 'undefined' && body.kolesterol !== '') ? Number(body.kolesterol) : null,
+      natrium: (typeof body.natrium !== 'undefined' && body.natrium !== '') ? Number(body.natrium) : null,
       harga: body.harga ? Number(body.harga) : 0,
       foto: null
     };
@@ -131,7 +134,7 @@ const updateMenu = async (req, res) => {
     const body = req.body || {};
 
     // Validate numeric fields
-    const numericFields = ['kalori','protein','gula','lemak','serat','lemak_jenuh','harga','kategori_id'];
+    const numericFields = ['kalori','protein','gula','lemak','serat','lemak_jenuh','karbohidrat','kolesterol','natrium','harga','kategori_id'];
     const payload = {};
     for (const nf of numericFields) {
       if (typeof body[nf] !== 'undefined' && body[nf] !== null && body[nf] !== '') {

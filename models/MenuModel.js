@@ -37,12 +37,15 @@ const MenuModel = {
             bahan_baku: Array.isArray(r.menu_bahan_baku) ? r.menu_bahan_baku.map(m => m.bahan_baku) : [],
             diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : [],
             nutrition: {
-                kalori: r.kalori || 0,
-                protein: r.protein || 0,
-                gula: r.gula || 0,
-                lemak: r.lemak || 0,
-                serat: r.serat || 0,
-                lemak_jenuh: r.lemak_jenuh || 0
+                 kalori: typeof r.kalori !== 'undefined' && r.kalori !== null ? r.kalori : null,
+                 protein: typeof r.protein !== 'undefined' && r.protein !== null ? r.protein : null,
+                 gula: typeof r.gula !== 'undefined' && r.gula !== null ? r.gula : null,
+                 lemak: typeof r.lemak !== 'undefined' && r.lemak !== null ? r.lemak : null,
+                 serat: typeof r.serat !== 'undefined' && r.serat !== null ? r.serat : null,
+                 lemak_jenuh: typeof r.lemak_jenuh !== 'undefined' && r.lemak_jenuh !== null ? r.lemak_jenuh : null,
+                 karbohidrat: typeof r.karbohidrat !== 'undefined' && r.karbohidrat !== null ? r.karbohidrat : null,
+                 kolesterol: typeof r.kolesterol !== 'undefined' && r.kolesterol !== null ? r.kolesterol : null,
+                 natrium: typeof r.natrium !== 'undefined' && r.natrium !== null ? r.natrium : null
             },
             deskripsi: r.deskripsi || null,
             metode_masak: r.metode_masak || null,
@@ -132,11 +135,14 @@ const MenuModel = {
             slug: r.slug,
             status_verifikasi: r.status_verifikasi,
             kalori: r.kalori,
+                karbohidrat: r.karbohidrat,
             protein: r.protein,
             gula: r.gula,
             lemak: r.lemak,
             serat: r.serat,
             lemak_jenuh: r.lemak_jenuh,
+                kolesterol: r.kolesterol,
+                natrium: r.natrium,
             nama_restoran: r.restorans?.nama_restoran || null,
             alamat: r.restorans?.alamat || null,
             no_telepon: r.restorans?.no_telepon || null,
@@ -174,6 +180,15 @@ const MenuModel = {
                     nama_restoran: r.restorans?.nama_restoran || null,
                     alamat: r.restorans?.alamat || null,
                     kategori: r.kategori_makanan?.nama_kategori || null,
+                    kalori: r.kalori,
+                    karbohidrat: r.karbohidrat,
+                    kolesterol: r.kolesterol,
+                    natrium: r.natrium,
+                    protein: r.protein,
+                    gula: r.gula,
+                    lemak: r.lemak,
+                    serat: r.serat,
+                    lemak_jenuh: r.lemak_jenuh,
                     bahan_baku: Array.isArray(r.menu_bahan_baku) ? r.menu_bahan_baku.map(m => m.bahan_baku) : [],
                     diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : []
                 };
@@ -204,6 +219,15 @@ const MenuModel = {
                     nama_restoran: r.restorans?.nama_restoran || null,
                     alamat: r.restorans?.alamat || null,
                     kategori: r.kategori_makanan?.nama_kategori || null,
+                    kalori: r.kalori,
+                    karbohidrat: r.karbohidrat,
+                    kolesterol: r.kolesterol,
+                    natrium: r.natrium,
+                    protein: r.protein,
+                    gula: r.gula,
+                    lemak: r.lemak,
+                    serat: r.serat,
+                    lemak_jenuh: r.lemak_jenuh,
                     bahan_baku: Array.isArray(r.menu_bahan_baku) ? r.menu_bahan_baku.map(m => m.bahan_baku) : [],
                     diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : []
                 };
@@ -252,7 +276,10 @@ MenuModel.findByDietClaim = async (claimKey, limit = 12) => {
             deskripsi: r.deskripsi,
             harga: r.harga,
             foto: r.foto,
-            kalori: r.kalori,
+                kalori: r.kalori,
+                karbohidrat: r.karbohidrat,
+                kolesterol: r.kolesterol,
+                natrium: r.natrium,
             protein: r.protein,
             diet_claims: Array.isArray(r.menu_diet_claims) ? r.menu_diet_claims.map(m => m.diet_claims_list) : [],
             nama_restoran: r.restorans?.nama_restoran || null,
@@ -289,12 +316,15 @@ MenuModel.create = async (data) => {
         nama_menu: data.nama_menu || null,
         deskripsi: data.deskripsi || null,
         metode_masak: data.metode_masak || null,
-        kalori: data.kalori || 0,
-        protein: data.protein || 0,
-        gula: data.gula || 0,
-        lemak: data.lemak || 0,
-        serat: data.serat || 0,
-        lemak_jenuh: data.lemak_jenuh || 0,
+        kalori: typeof data.kalori !== 'undefined' && data.kalori !== null ? data.kalori : null,
+        protein: typeof data.protein !== 'undefined' && data.protein !== null ? data.protein : null,
+        gula: typeof data.gula !== 'undefined' && data.gula !== null ? data.gula : null,
+        lemak: typeof data.lemak !== 'undefined' && data.lemak !== null ? data.lemak : null,
+        serat: typeof data.serat !== 'undefined' && data.serat !== null ? data.serat : null,
+        lemak_jenuh: typeof data.lemak_jenuh !== 'undefined' && data.lemak_jenuh !== null ? data.lemak_jenuh : null,
+        karbohidrat: typeof data.karbohidrat !== 'undefined' && data.karbohidrat !== null ? data.karbohidrat : null,
+        kolesterol: typeof data.kolesterol !== 'undefined' && data.kolesterol !== null ? data.kolesterol : null,
+        natrium: typeof data.natrium !== 'undefined' && data.natrium !== null ? data.natrium : null,
         harga: data.harga || 0,
         foto: data.foto || null,
         status_verifikasi: 'pending',
@@ -315,7 +345,7 @@ MenuModel.create = async (data) => {
 MenuModel.updateMenu = async (id, data) => {
     if (!id) throw new Error('Missing id');
     // Allowed fields to update
-    const allowed = ['kategori_id','nama_menu','deskripsi','metode_masak','kalori','protein','gula','lemak','serat','lemak_jenuh','harga','foto','status_verifikasi'];
+    const allowed = ['kategori_id','nama_menu','deskripsi','metode_masak','kalori','protein','gula','lemak','serat','lemak_jenuh','karbohidrat','kolesterol','natrium','harga','foto','status_verifikasi'];
     const payload = {};
     for (const k of allowed) {
         if (typeof data[k] !== 'undefined') payload[k] = data[k];
