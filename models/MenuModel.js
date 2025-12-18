@@ -398,3 +398,12 @@ MenuModel.findByRestaurantId = async (restoranId) => {
 };
 
 module.exports = MenuModel;
+
+// Delete menu row (hard delete). Caller should ensure authorization.
+MenuModel.deleteMenu = async (id) => {
+    if (!id) throw new Error('Missing id');
+    const { data, error } = await supabase.from('menu_makanan').delete().eq('id', id).select('id').limit(1).single();
+    if (error) { console.error('deleteMenu error', error); throw error; }
+    try { const cache = require('../utils/cache'); await cache.del('featured_menus:10'); } catch (e) { }
+    return data;
+};

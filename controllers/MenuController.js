@@ -168,4 +168,39 @@ const createMenu = async (req, res) => {
   }
 };
 
-module.exports = { list, getById, getBySlug, createMenu, getFeatured, search, getByCategory, updateMenu: menuCreateController.updateMenu };
+const deleteMenu = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: 'menu id is required' });
+
+    // fetch row to validate ownership
+    const row = await MenuModel.getMenuDetailById(id);
+    if (!row) return res.status(404).json({ success: false, message: 'Menu tidak ditemukan.' });
+
+    // owner or admin only
+    if (user.role !== 'admin') {
+      // fetch restaurant owner
+      const restoran = await RestaurantModel.findById(row.restoran_id || row.restoranId || row.restoran_id);
+      if (!restoran) return res.status(403).json({ success: false, message: 'Akses ditolak.' });
+      if (Number(restoran.user_id) !== Number(user.id)) return res.status(403).json({ success: false, message: 'Akses ditolak: bukan pemilik menu.' });
+    }
+
+    // delete pivots first (best-effort)
+    try {
+      const supabase = require('../supabase/supabaseClient');
+      await supabase.from('menu_bahan_baku').delete().eq('menu_id', id);
+      await supabase.from('menu_diet_claims').delete().eq('menu_id', id);
+    } catch (e) { console.warn('failed to clean pivots', e); }
+
+    // delete menu
+    const deleted = await MenuModel.deleteMenu(id);
+    return res.json({ success: true, message: 'Menu berhasil dihapus.' });
+  } catch (err) {
+    console.error('deleteMenu error', err);
+    return res.status(500).json({ success: false, message: 'Gagal menghapus menu.' });
+  }
+};
+
+module.exports = { list, getById, getBySlug, createMenu, getFeatured, search, getByCategory, updateMenu: menuCreateController.updateMenu, deleteMenu };

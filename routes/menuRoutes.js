@@ -71,5 +71,12 @@ router.post('/', verifyToken, uploadMenu.single('foto'), validateMenu, menuContr
 // Protected: update menu (owner or admin) - syncs pivots
 router.patch('/:id', verifyToken, uploadMenu.single('foto'), validateMenu, menuController.updateMenu);
 
+/**
+ * @route DELETE /api/menus/:id
+ * @description Hapus menu (owner atau admin)
+ * @access Protected
+ */
+router.delete('/:id', verifyToken, menuController.deleteMenu);
+
 
 module.exports = router;
