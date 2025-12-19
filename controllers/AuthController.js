@@ -183,29 +183,29 @@ const uploadAvatar = async (req, res) => {
                     upsert: false,
                 });
 
-                // Remove local file regardless
+                // Remove local file (we'll keep a local copy until we decide final URL)
                 try { fs.unlinkSync(localPath); } catch (e) { /* ignore */ }
 
+                // Default fallback to local uploads path
+                let avatarUrlToSave = `/uploads/users/${req.file.filename}`;
+
                 if (uploadError) {
-                    console.error('Supabase storage upload error', uploadError);
-                    return res.status(500).json({ message: 'Gagal mengunggah avatar ke storage.' });
-                }
-
-                // Get public URL
-                let publicUrl = null;
-                try {
-                    const { data: publicData, error: publicErr } = supabase.storage.from(bucket).getPublicUrl(storagePath);
-                    if (publicErr) {
-                        console.error('Supabase getPublicUrl error', publicErr);
-                    } else {
-                        publicUrl = publicData?.publicUrl || null;
+                    // If Supabase upload fails, log full error but continue using local file path
+                    console.error('Supabase storage upload error (falling back to local file):', uploadError);
+                } else {
+                    // Try to resolve public URL from Supabase storage
+                    try {
+                        const { data: publicData, error: publicErr } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+                        if (publicErr) {
+                            console.error('Supabase getPublicUrl error', publicErr);
+                        } else {
+                            const publicUrl = publicData?.publicUrl || null;
+                            if (publicUrl) avatarUrlToSave = publicUrl;
+                        }
+                    } catch (e) {
+                        console.error('Error getting public url for avatar', e);
                     }
-                } catch (e) {
-                    console.error('Error getting public url for avatar', e);
                 }
-
-                // Persist avatar URL in user's profile
-                const avatarUrlToSave = publicUrl || `/uploads/users/${req.file.filename}`;
                 await UserModel.setAvatar(decoded.id, avatarUrlToSave);
                 const updated = await UserModel.findById(decoded.id);
                 const { password: _p, ...sanitized } = updated || {};
