@@ -1,83 +1,134 @@
 const supabase = require('../supabase/supabaseClient');
 
-// Simple, controlled search implementation per spec:
-// - Only search `menu_makanan.nama_menu` using ILIKE
-// - Do NOT use RPC/FTS/search_vector
-// - Only return menus (status_verifikasi = 'disetujui')
-// - Single endpoint: GET /api/search?q=...
+/**
+ * Search Controller - Simple ILIKE-based search
+ * Searches menu_makanan.nama_menu and slug columns
+ * Only returns verified menus (status_verifikasi = 'disetujui')
+ */
 const search = async (req, res) => {
   try {
+    // Validate query parameter
     const q = (req.query.q || '').trim();
-    if (!q) return res.status(400).json({ success: false, message: 'Query parameter q is required', data: { query: q, results: [] } });
+    if (!q) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Query parameter q is required', 
+        data: { 
+          query: q, 
+          results: [], 
+          total: 0,
+          page: 1,
+          limit: 24
+        } 
+      });
+    }
 
+    // Parse pagination parameters
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Number(req.query.limit) || 24);
+    const limit = Math.min(100, parseInt(req.query.limit, 10) || 24);
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
-    const term = q;
+    // Parse search type (default to 'menu')
     const type = (req.query.type || 'menu').toString().toLowerCase();
 
-    // Request exact count and a paginated range for efficient client-side paging
-    // For menu searches we search both `nama_menu` and `slug` (ILIKE)
+    console.log(`[SearchController] Searching for: "${q}", type: ${type}, page: ${page}, limit: ${limit}`);
+
+    // Only menu search is implemented
     if (type === 'menu' || type === 'all') {
-      const ilikeExpr = `nama_menu.ilike.'%${term}%' , slug.ilike.'%${term}%'`;
+      // Build ILIKE pattern for case-insensitive search
+      const searchPattern = `%${q}%`;
+      
+      // Query with exact count for pagination
       const { data: menus, error, count } = await supabase
         .from('menu_makanan')
-        .select('id,nama_menu,slug,deskripsi,harga,rating,foto,restorans(nama_restoran,slug)', { count: 'exact' })
-        .or(ilikeExpr)
+        .select(`
+          id,
+          nama_menu,
+          slug,
+          deskripsi,
+          harga,
+          rating,
+          foto,
+          restorans!inner(
+            nama_restoran,
+            slug
+          )
+        `, { count: 'exact' })
+        .or(`nama_menu.ilike.${searchPattern},slug.ilike.${searchPattern}`)
         .eq('status_verifikasi', 'disetujui')
+        .order('rating', { ascending: false, nullsFirst: false })
         .order('updated_at', { ascending: false })
         .range(from, to);
 
       if (error) {
-        console.error('[SearchController] menu ILIKE query error', error);
-        return res.status(500).json({ success: false, message: 'Failed to perform search', data: { query: q, results: [] } });
+        console.error('[SearchController] Database error:', error);
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Failed to perform search', 
+          data: { 
+            query: q, 
+            results: [],
+            total: 0,
+            page,
+            limit
+          } 
+        });
       }
 
-      const results = (menus || []).map(m => ({
+      // Transform results to frontend format
+      const results = (menus || []).map(menu => ({
         type: 'menu',
-        id: m.id,
-        name: m.nama_menu,
-        slug: m.slug,
-        description: m.deskripsi || null,
-        price: m.harga || null,
-        rating: typeof m.rating !== 'undefined' && m.rating !== null ? m.rating : null,
-        foto: m.foto || null,
-        restaurant: m.restorans?.nama_restoran || null,
-        restaurant_slug: m.restorans?.slug || null
+        id: menu.id,
+        name: menu.nama_menu,
+        slug: menu.slug,
+        description: menu.deskripsi || '',
+        price: menu.harga || 0,
+        rating: menu.rating || 0,
+        foto: menu.foto || null,
+        restaurant: menu.restorans?.nama_restoran || '',
+        restaurant_slug: menu.restorans?.slug || ''
       }));
 
-      // Return pagination metadata to the client
-      return res.json({ success: true, data: { query: q, results, total: typeof count === 'number' ? count : results.length, page, limit } });
+      console.log(`[SearchController] Found ${results.length} results (total: ${count})`);
+
+      return res.json({ 
+        success: true, 
+        data: { 
+          query: q, 
+          results, 
+          total: typeof count === 'number' ? count : results.length, 
+          page, 
+          limit 
+        } 
+      });
     }
 
-    // Fallback: no other types implemented yet
-    return res.json({ success: true, data: { query: q, results: [], total: 0, page, limit } });
+    // Fallback for unsupported types
+    return res.json({ 
+      success: true, 
+      data: { 
+        query: q, 
+        results: [], 
+        total: 0, 
+        page, 
+        limit 
+      } 
+    });
 
-    if (error) {
-      console.error('[SearchController] menu ILIKE query error', error);
-      return res.status(500).json({ success: false, message: 'Failed to perform search', data: { query: q, results: [] } });
-    }
-
-    const results = (menus || []).map(m => ({
-      type: 'menu',
-      id: m.id,
-      name: m.nama_menu,
-      slug: m.slug,
-      description: m.deskripsi || null,
-      price: m.harga || null,
-      rating: typeof m.rating !== 'undefined' && m.rating !== null ? m.rating : null,
-      foto: m.foto || null,
-      restaurant: m.restorans?.nama_restoran || null,
-      restaurant_slug: m.restorans?.slug || null
-    }));
-
-    // Return pagination metadata to the client
-    return res.json({ success: true, data: { query: q, results, total: typeof count === 'number' ? count : results.length, page, limit } });
   } catch (err) {
-    console.error('[SearchController] unexpected error', err);
-    return res.status(500).json({ success: false, message: 'Internal server error', data: { query: req.query.q || '', results: [] } });
+    console.error('[SearchController] Unexpected error:', err);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Internal server error', 
+      data: { 
+        query: req.query.q || '', 
+        results: [],
+        total: 0,
+        page: 1,
+        limit: 24
+      } 
+    });
   }
 };
 
