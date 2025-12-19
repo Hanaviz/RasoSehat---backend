@@ -243,11 +243,27 @@ MenuModel.findByDietClaim = async (claimKey, limit = 12) => {
     try {
         // New implementation: use diet_claims_list and pivot table menu_diet_claims
         const raw = String(claimKey).trim();
-        const patterns = [`%${raw}%`, `%${raw.toLowerCase()}%`, `%${raw.replace(/\s+/g,'-')}%`];
+        // support multiple incoming key shapes: english_snake_case, slug, or human-readable
+        const englishToIndo = {
+            'low_calorie': 'Rendah Kalori',
+            'low_sugar': 'Rendah Gula',
+            'high_protein': 'Tinggi Protein',
+            'high_fiber': 'Tinggi Serat',
+            'balanced': 'Seimbang',
+            'vegan': 'Vegetarian / Vegan',
+            'low_saturated_fat': 'Rendah Lemak Jenuh',
+            'kids_friendly': 'Kids Friendly',
+            'gluten_free': 'Gluten Free',
+            'organic': 'Organik'
+        };
+
+        const human = englishToIndo[raw] || raw.replace(/_/g, ' ');
+        const slugCandidate = raw.replace(/\s+/g, '-').toLowerCase();
+        const patterns = [`%${human}%`, `%${raw}%`, `%${raw.toLowerCase()}%`, `%${slugCandidate}%`];
         // find matching diet claim ids
         let claimIds = [];
         for (const p of patterns) {
-            const { data: drows, error } = await supabase.from('diet_claims_list').select('id').ilike('nama', p).limit(50);
+            const { data: drows, error } = await supabase.from('diet_claims_list').select('id,nama').ilike('nama', p).limit(50);
             if (error) { console.warn('findByDietClaim diet_claims_list lookup error', error); continue; }
             if (drows && drows.length) claimIds.push(...drows.map(d => d.id));
         }
