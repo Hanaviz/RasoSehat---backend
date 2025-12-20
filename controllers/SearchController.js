@@ -37,15 +37,42 @@ const search = async (req, res) => {
     // Implement menu, restaurant, or combined search
     const searchPattern = `%${q}%`;
 
-    // Helper: count matching rows for a table using head:true
-    const countMatches = async (table, orCondition) => {
-      const resp = await supabase
-        .from(table)
-        .select('id', { count: 'exact', head: true })
-        .or(orCondition)
-        .eq('status_verifikasi', 'disetujui');
-      return resp.count || 0;
+    // Helper: total approved count for a table
+    const countApproved = async (table) => {
+      try {
+        const resp = await supabase
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .eq('status_verifikasi', 'disetujui');
+        return resp.count || 0;
+      } catch (e) {
+        console.error(`[SearchController] countApproved error for ${table}:`, e);
+        return 0;
+      }
     };
+
+    // Helper: count matching rows for a table using head:true (with or-condition)
+    const countMatches = async (table, orCondition) => {
+      try {
+        const resp = await supabase
+          .from(table)
+          .select('id', { count: 'exact', head: true })
+          .or(orCondition)
+          .eq('status_verifikasi', 'disetujui');
+        return resp.count || 0;
+      } catch (e) {
+        console.error(`[SearchController] countMatches error for ${table}:`, e);
+        return 0;
+      }
+    };
+
+    // Audit counts (total approved records)
+    const totalApprovedMenus = await countApproved('menu_makanan');
+    const totalApprovedRestos = await countApproved('restorans');
+    console.log(`[SearchController] Approved totals - menus: ${totalApprovedMenus}, restaurants: ${totalApprovedRestos}, keyword: "${q}"`);
+    if (!totalApprovedRestos) {
+      console.warn('[SearchController] WARNING: No restaurants with status_verifikasi = "disetujui" found in database');
+    }
 
     // If only menu requested -> keep existing behavior unchanged
     if (type === 'menu') {
@@ -73,6 +100,10 @@ const search = async (req, res) => {
       if (error) {
         console.error('[SearchController] Database error (menu):', error);
         return res.status(500).json({ success: false, message: 'Failed to perform search', data: { query: q, results: [], total: 0, page, limit } });
+      }
+
+      if ((count || 0) === 0) {
+        console.info(`[SearchController] No menu results for "${q}" (approved menus total: ${totalApprovedMenus})`);
       }
 
       const results = (menus || []).map(menu => ({
@@ -107,6 +138,10 @@ const search = async (req, res) => {
         return res.status(500).json({ success: false, message: 'Failed to perform search', data: { query: q, results: [], total: 0, page, limit } });
       }
 
+      if ((count || 0) === 0) {
+        console.info(`[SearchController] No restaurant results for "${q}" (approved restaurants total: ${totalApprovedRestos})`);
+      }
+
       const results = (restos || []).map(r => ({
         type: 'restaurant',
         id: r.id,
@@ -126,6 +161,9 @@ const search = async (req, res) => {
       const menuCount = await countMatches('menu_makanan', `nama_menu.ilike.${searchPattern},slug.ilike.${searchPattern}`);
       const restoCount = await countMatches('restorans', `nama_restoran.ilike.${searchPattern},slug.ilike.${searchPattern}`);
       const combinedTotal = (menuCount || 0) + (restoCount || 0);
+      if (combinedTotal === 0) {
+        console.info(`[SearchController] No combined results for "${q}" (menus:${menuCount}, restaurants:${restoCount})`);
+      }
 
       // Calculate which slices to fetch from each table to satisfy page/limit across combined list
       const combinedFrom = from;
@@ -227,9 +265,11 @@ const search = async (req, res) => {
       return res.json({ success: true, data: { query: q, results, total: combinedTotal, page, limit } });
     }
 
-    // Fallback for unsupported types
-    return res.json({ 
-      success: true, 
+    // Fallback for unsupported types — do not silent fail
+    console.warn(`[SearchController] Unsupported search type requested: ${type}`);
+    return res.status(400).json({ 
+      success: false, 
+      message: `Unsupported search type: ${type}`,
       data: { 
         query: q, 
         results: [], 
