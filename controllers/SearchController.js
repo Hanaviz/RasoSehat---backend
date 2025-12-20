@@ -51,17 +51,6 @@ const search = async (req, res) => {
       }
     };
 
-    // Small slug generator fallback
-    const slugify = (text) => {
-      if (!text) return null;
-      return String(text).toLowerCase().trim()
-        .normalize('NFKD')
-        .replace(/\s+/g, '-')
-        .replace(/[^a-z0-9\-]/g, '')
-        .replace(/\-+/g, '-')
-        .replace(/^\-+|\-+$/g, '');
-    };
-
     // Helper: count matching rows for a table using head:true (with or-condition)
     const countMatches = async (table, orCondition) => {
       try {
@@ -138,7 +127,7 @@ const search = async (req, res) => {
       // count + fetch restaurants with pagination
       const { data: restos, error, count } = await supabase
         .from('restorans')
-        .select(`id, nama_restoran, slug, deskripsi, foto`, { count: 'exact' })
+        .select(`id, nama_restoran, slug, deskripsi`, { count: 'exact' })
         .or(`nama_restoran.ilike.${searchPattern},slug.ilike.${searchPattern}`)
         .eq('status_verifikasi', 'disetujui')
         .order('nama_restoran', { ascending: true })
@@ -157,9 +146,9 @@ const search = async (req, res) => {
         type: 'restaurant',
         id: r.id,
         name: r.nama_restoran,
-        slug: r.slug || slugify(r.nama_restoran) || null,
+        slug: r.slug,
         description: r.deskripsi || '',
-        foto: r.foto || null,
+        foto: null,
         rating: 0
       }));
 
@@ -249,7 +238,7 @@ const search = async (req, res) => {
       if (restosToFetch.limit > 0) {
         const { data: restos, error: rErr } = await supabase
           .from('restorans')
-          .select(`id, nama_restoran, slug, deskripsi, foto`)
+          .select(`id, nama_restoran, slug, deskripsi`)
           .or(`nama_restoran.ilike.${searchPattern},slug.ilike.${searchPattern}`)
           .eq('status_verifikasi', 'disetujui')
           .order('nama_restoran', { ascending: true })
@@ -264,9 +253,9 @@ const search = async (req, res) => {
           type: 'restaurant',
           id: r.id,
           name: r.nama_restoran,
-          slug: r.slug || slugify(r.nama_restoran) || null,
+          slug: r.slug,
           description: r.deskripsi || '',
-          foto: r.foto || null,
+          foto: null,
           rating: 0
         }));
       }
