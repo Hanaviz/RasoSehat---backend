@@ -11,12 +11,16 @@ const mapStatus = (status) => {
     return null;
 };
 
+// Known status variants (be permissive to handle legacy/seeded values)
+const PENDING_STATUSES = ['pending', 'menunggu', 'waiting', 'pending_verification'];
+const APPROVED_STATUSES = ['disetujui', 'approved', 'verify', 'verified', 'approve'];
+
 const getPendingRestaurants = async (req, res) => {
     try {
         // Return a broad set of columns so admin can review all submitted data including documents_json
         const { data: rows, error } = await supabase.from('restorans')
             .select('*')
-            .in('status_verifikasi', ['pending','menunggu'])
+            .in('status_verifikasi', PENDING_STATUSES)
             .order('created_at', { ascending: false });
 
         if (error) {
@@ -86,7 +90,8 @@ const getPendingRestaurants = async (req, res) => {
                 foto_ktp: row.foto_ktp,
                 npwp: row.npwp,
                 dokumen_usaha: row.dokumen_usaha,
-                status_verifikasi: row.status_verifikasi,
+                    // normalize status_verifikasi to lower-case trimmed value for frontend consistency
+                    status_verifikasi: row.status_verifikasi ? String(row.status_verifikasi).trim().toLowerCase() : row.status_verifikasi,
                 created_at: row.created_at
             };
         });
@@ -149,15 +154,22 @@ const getActiveRestaurants = async (req, res) => {
 
                 const fromIndex = offset;
                 const toIndex = offset + perPage - 1;
+                // Only return rows whose status_verifikasi matches one of the approved variants
                 const { data: rows, error } = await supabase.from('restorans')
                     .select('*')
-                    .eq('status_verifikasi', 'disetujui')
+                    .in('status_verifikasi', APPROVED_STATUSES)
                     .order('updated_at', { ascending: false })
                     .range(fromIndex, toIndex);
                 if (error) { console.error('getActiveRestaurants supabase error', error); throw error; }
 
+        // Normalize statuses for frontend consistency
+        const normalized = (rows || []).map(r => ({
+            ...r,
+            status_verifikasi: r.status_verifikasi ? String(r.status_verifikasi).trim().toLowerCase() : r.status_verifikasi
+        }));
+
         // return simple paging metadata
-        return res.status(200).json({ data: rows, page, per_page: perPage });
+        return res.status(200).json({ data: normalized, page, per_page: perPage });
     } catch (err) {
         console.error('getActiveRestaurants error', err);
         return res.status(500).json({ message: 'Gagal mengambil restoran aktif.' });
