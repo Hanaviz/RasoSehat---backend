@@ -730,6 +730,29 @@ const getVerifikasiDebugPublic = async (req, res) => {
         return res.status(500).json({ message: 'Internal server error while reading verifikasi sample.' });
     }
 };
+
+// GET /admin/kpi/summary
+const getKpiSummary = async (req, res) => {
+    try {
+        // Use head:true + count:'exact' to get lightweight counts from Supabase
+        const pendingR = await supabase.from('restorans').select('id', { count: 'exact', head: true }).in('status_verifikasi', ['pending','menunggu']);
+        const pendingM = await supabase.from('menu_makanan').select('id', { count: 'exact', head: true }).in('status_verifikasi', ['pending','menunggu']);
+        const activeM = await supabase.from('menu_makanan').select('id', { count: 'exact', head: true }).eq('status_verifikasi', 'disetujui');
+        const totalR = await supabase.from('restorans').select('id', { count: 'exact', head: true });
+        const totalU = await supabase.from('users').select('id', { count: 'exact', head: true });
+
+        const pendingRestaurants = typeof pendingR.count === 'number' ? pendingR.count : 0;
+        const pendingMenus = typeof pendingM.count === 'number' ? pendingM.count : 0;
+        const activeMenus = typeof activeM.count === 'number' ? activeM.count : 0;
+        const totalRestaurants = typeof totalR.count === 'number' ? totalR.count : 0;
+        const totalUsers = typeof totalU.count === 'number' ? totalU.count : 0;
+
+        return res.status(200).json({ success: true, data: { pendingRestaurants, pendingMenus, activeMenus, totalRestaurants, totalUsers } });
+    } catch (err) {
+        console.error('getKpiSummary error', err);
+        return res.status(500).json({ success: false, message: 'Gagal mengambil ringkasan KPI.' });
+    }
+};
 module.exports = {
     getPendingRestaurants,
     getPendingMenus,
@@ -738,6 +761,8 @@ module.exports = {
     getRestaurantById,
     patchVerifyRestaurant,
     getActiveRestaurants,
+    // KPI summary endpoint
+    getKpiSummary,
     getRestaurantVerificationHistory,
     getActiveMenus,
     getMenuVerificationHistory,

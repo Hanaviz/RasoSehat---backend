@@ -14,6 +14,8 @@ router.get('/restaurant/:id', verifyToken, adminMiddleware, adminController.getR
 // New: Active and history endpoints for management views
 router.get('/restaurants/active', verifyToken, adminMiddleware, adminController.getActiveRestaurants);
 router.get('/restaurants/history', verifyToken, adminMiddleware, adminController.getRestaurantVerificationHistory);
+// KPI summary for dashboard cards
+router.get('/kpi/summary', verifyToken, adminMiddleware, adminController.getKpiSummary);
 // Debugging: return sample of verifikasi table (admin only)
 router.get('/verifikasi/debug', verifyToken, adminMiddleware, adminController.getVerifikasiDebug);
 // DEV-ONLY public sample route (no auth) when NODE_ENV=development
