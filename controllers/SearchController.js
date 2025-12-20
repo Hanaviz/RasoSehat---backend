@@ -127,7 +127,7 @@ const search = async (req, res) => {
       // count + fetch restaurants with pagination
       const { data: restos, error, count } = await supabase
         .from('restorans')
-        .select(`id, nama_restoran, slug, deskripsi, foto, rating`, { count: 'exact' })
+        .select(`id, nama_restoran, slug, deskripsi`, { count: 'exact' })
         .or(`nama_restoran.ilike.${searchPattern},slug.ilike.${searchPattern}`)
         .eq('status_verifikasi', 'disetujui')
         .order('nama_restoran', { ascending: true })
@@ -148,8 +148,8 @@ const search = async (req, res) => {
         name: r.nama_restoran,
         slug: r.slug,
         description: r.deskripsi || '',
-        foto: r.foto || null,
-        rating: r.rating || 0
+        foto: null,
+        rating: 0
       }));
 
       return res.json({ success: true, data: { query: q, results, total: typeof count === 'number' ? count : results.length, page, limit } });
@@ -238,7 +238,7 @@ const search = async (req, res) => {
       if (restosToFetch.limit > 0) {
         const { data: restos, error: rErr } = await supabase
           .from('restorans')
-          .select(`id, nama_restoran, slug, deskripsi, foto, rating`)
+          .select(`id, nama_restoran, slug, deskripsi`)
           .or(`nama_restoran.ilike.${searchPattern},slug.ilike.${searchPattern}`)
           .eq('status_verifikasi', 'disetujui')
           .order('nama_restoran', { ascending: true })
@@ -255,8 +255,8 @@ const search = async (req, res) => {
           name: r.nama_restoran,
           slug: r.slug,
           description: r.deskripsi || '',
-          foto: r.foto || null,
-          rating: r.rating || 0
+          foto: null,
+          rating: 0
         }));
       }
 
