@@ -106,7 +106,7 @@ const search = async (req, res) => {
         console.info(`[SearchController] No menu results for "${q}" (approved menus total: ${totalApprovedMenus})`);
       }
 
-      const results = (menus || []).map(menu => ({
+        const results = (menus || []).map(menu => ({
         type: 'menu',
         id: menu.id,
         name: menu.nama_menu,
@@ -114,7 +114,9 @@ const search = async (req, res) => {
         description: menu.deskripsi || '',
         price: menu.harga || 0,
         rating: menu.rating || 0,
-        foto: menu.foto || null,
+          foto: menu.foto || null,
+          foto_path: menu.foto_path || menu.foto || null,
+          foto_storage_provider: menu.foto_storage_provider || null,
         restaurant: menu.restorans?.nama_restoran || '',
         restaurant_slug: menu.restorans?.slug || ''
       }));
@@ -228,6 +230,8 @@ const search = async (req, res) => {
           price: menu.harga || 0,
           rating: menu.rating || 0,
           foto: menu.foto || null,
+          foto_path: menu.foto_path || menu.foto || null,
+          foto_storage_provider: menu.foto_storage_provider || null,
           restaurant: menu.restorans?.nama_restoran || '',
           restaurant_slug: menu.restorans?.slug || ''
         }));

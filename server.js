@@ -75,10 +75,23 @@ app.use(bodyParser.json());
 -------------------------------------------- */
 const path = require("path");
 
+// quick existence checker for uploads - logs missing files (helps debug 404s in production)
+const fs = require('fs');
+
 // Serve static files dari folder uploads
 // HARUS sebelum route definitions agar file bisa diakses
 app.use(
   "/uploads",
+  // middleware to log missing files for easier debugging
+  (req, res, next) => {
+    try {
+      const p = path.join(__dirname, 'uploads', req.path);
+      if (!fs.existsSync(p)) {
+        console.warn('[UPLOADS][MISSING]', p, 'requested from', req.get('referer') || req.get('host') || req.ip);
+      }
+    } catch (e) { /* ignore */ }
+    next();
+  },
   express.static(path.join(__dirname, "uploads"), {
     maxAge: "1d", // Cache untuk 1 hari
     etag: true,
@@ -100,7 +113,6 @@ const searchRoutes = require("./routes/searchRoutes");
 const restaurantRoutes = require("./routes/restaurantRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 
-const fs = require("fs");
 const { resizeAndCache } = require("./utils/imageResizer");
 
 /* -------------------------------------------

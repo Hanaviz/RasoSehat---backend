@@ -25,12 +25,19 @@ const MenuModel = {
     // Hydrate a raw Supabase row (with nested joins) into canonical API shape
     getMenuHydrated: (r) => {
         if (!r) return null;
+        // Prefer `foto_path` (new column) but keep `foto` for backward compatibility
+        const fotoPath = r.foto_path || r.foto || null;
+        const fotoProvider = r.foto_storage_provider || null;
+
         return {
             id: r.id,
             nama_menu: r.nama_menu,
             slug: r.slug,
             harga: r.harga,
-            foto: r.foto,
+            // expose both new and legacy fields
+            foto: r.foto || null,
+            foto_path: fotoPath,
+            foto_storage_provider: fotoProvider,
             status_verifikasi: r.status_verifikasi,
             kategori: r.kategori_makanan ? { id: r.kategori_id || null, nama_kategori: r.kategori_makanan?.nama_kategori || null } : (r.kategori_id ? { id: r.kategori_id } : null),
             restoran: r.restorans ? { id: r.restorans.id || r.restoran_id, nama_restoran: r.restorans.nama_restoran || null, alamat: r.restorans.alamat || null, no_telepon: r.restorans.no_telepon || null, latitude: r.restorans.latitude || null, longitude: r.restorans.longitude || null, slug: r.restorans.slug || null } : (r.restoran_id ? { id: r.restoran_id } : null),
@@ -131,7 +138,9 @@ const MenuModel = {
             nama_menu: r.nama_menu,
             deskripsi: r.deskripsi,
             harga: r.harga,
-            foto: r.foto,
+            foto: r.foto || null,
+            foto_path: r.foto_path || r.foto || null,
+            foto_storage_provider: r.foto_storage_provider || null,
             slug: r.slug,
             status_verifikasi: r.status_verifikasi,
             kalori: r.kalori,
@@ -174,7 +183,9 @@ const MenuModel = {
                     nama_menu: r.nama_menu,
                     deskripsi: r.deskripsi,
                     harga: r.harga,
-                    foto: r.foto,
+                        foto: r.foto || null,
+                        foto_path: r.foto_path || r.foto || null,
+                        foto_storage_provider: r.foto_storage_provider || null,
                     slug: r.slug,
                     status_verifikasi: r.status_verifikasi,
                     nama_restoran: r.restorans?.nama_restoran || null,
@@ -213,7 +224,9 @@ const MenuModel = {
                     nama_menu: r.nama_menu,
                     deskripsi: r.deskripsi,
                     harga: r.harga,
-                    foto: r.foto,
+                        foto: r.foto || null,
+                        foto_path: r.foto_path || r.foto || null,
+                        foto_storage_provider: r.foto_storage_provider || null,
                     slug: r.slug,
                     status_verifikasi: r.status_verifikasi,
                     nama_restoran: r.restorans?.nama_restoran || null,
@@ -291,7 +304,9 @@ MenuModel.findByDietClaim = async (claimKey, limit = 12) => {
             nama_menu: r.nama_menu,
             deskripsi: r.deskripsi,
             harga: r.harga,
-            foto: r.foto,
+            foto: r.foto || null,
+            foto_path: r.foto_path || r.foto || null,
+            foto_storage_provider: r.foto_storage_provider || null,
                 kalori: r.kalori,
                 karbohidrat: r.karbohidrat,
                 kolesterol: r.kolesterol,
@@ -343,6 +358,8 @@ MenuModel.create = async (data) => {
         natrium: typeof data.natrium !== 'undefined' && data.natrium !== null ? data.natrium : null,
         harga: data.harga || 0,
         foto: data.foto || null,
+        foto_path: data.foto_path || null,
+        foto_storage_provider: data.foto_storage_provider || null,
         status_verifikasi: 'pending',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -361,7 +378,7 @@ MenuModel.create = async (data) => {
 MenuModel.updateMenu = async (id, data) => {
     if (!id) throw new Error('Missing id');
     // Allowed fields to update
-    const allowed = ['kategori_id','nama_menu','deskripsi','metode_masak','kalori','protein','gula','lemak','serat','lemak_jenuh','karbohidrat','kolesterol','natrium','harga','foto','status_verifikasi'];
+    const allowed = ['kategori_id','nama_menu','deskripsi','metode_masak','kalori','protein','gula','lemak','serat','lemak_jenuh','karbohidrat','kolesterol','natrium','harga','foto','foto_path','foto_storage_provider','status_verifikasi'];
     const payload = {};
     for (const k of allowed) {
         if (typeof data[k] !== 'undefined') payload[k] = data[k];
@@ -404,7 +421,9 @@ MenuModel.findByRestaurantId = async (restoranId) => {
             nama_menu: r.nama_menu,
             slug: r.slug,
             harga: r.harga,
-            foto: r.foto,
+                foto: r.foto || null,
+                foto_path: r.foto_path || r.foto || null,
+                foto_storage_provider: r.foto_storage_provider || null,
             status_verifikasi: r.status_verifikasi,
             kategori: r.kategori_makanan?.nama_kategori || null,
             kalori: r.kalori,

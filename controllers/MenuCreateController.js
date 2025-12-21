@@ -48,11 +48,17 @@ const createMenu = async (req, res) => {
       kolesterol: (typeof body.kolesterol !== 'undefined' && body.kolesterol !== '') ? Number(body.kolesterol) : null,
       natrium: (typeof body.natrium !== 'undefined' && body.natrium !== '') ? Number(body.natrium) : null,
       harga: body.harga ? Number(body.harga) : 0,
-      foto: null
+      // New storage columns
+      foto: null,
+      foto_path: null,
+      foto_storage_provider: null
     };
 
     if (fotoFile) {
-      menuData.foto = `/uploads/menu/${path.basename(fotoFile.path)}`;
+      const rel = `/uploads/menu/${path.basename(fotoFile.path)}`;
+      menuData.foto = rel; // legacy
+      menuData.foto_path = rel;
+      menuData.foto_storage_provider = 'local';
     }
 
     // Validate required
@@ -144,7 +150,7 @@ const updateMenu = async (req, res) => {
       }
     }
     // Other allowed string fields
-    const allowedStrings = ['nama_menu','deskripsi','metode_masak','foto','status_verifikasi'];
+    const allowedStrings = ['nama_menu','deskripsi','metode_masak','foto','foto_path','foto_storage_provider','status_verifikasi'];
     for (const s of allowedStrings) if (typeof body[s] !== 'undefined') payload[s] = body[s];
 
     // Optional: validate kategori existence

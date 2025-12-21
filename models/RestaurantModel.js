@@ -78,6 +78,10 @@ class RestaurantModel {
 			documents_json: documents_json || null,
 			updated_at: new Date().toISOString()
 		};
+
+		// support new storage columns if provided
+		if (Object.prototype.hasOwnProperty.call(arguments[1], 'foto_path')) payload.foto_path = arguments[1].foto_path || null;
+		if (Object.prototype.hasOwnProperty.call(arguments[1], 'foto_storage_provider')) payload.foto_storage_provider = arguments[1].foto_storage_provider || null;
 		const { data, error } = await supabase.from('restorans').update(payload).eq('id', id).select('id');
 		if (error) { console.error('updateStep3 error', error); throw error; }
 		return this.findById(id);
@@ -101,6 +105,15 @@ class RestaurantModel {
 			// Expose `foto` property for backward compatibility (some front-end reads `restaurant.foto`)
 			if (!row.foto && row.documents_json && row.documents_json.profile) {
 				row.foto = row.documents_json.profile;
+			}
+
+			// Normalize new storage columns: prefer foto_path, but fall back to legacy `foto` if present
+			if (!row.foto_path && row.foto) {
+				row.foto_path = row.foto;
+			}
+			if (!row.foto_storage_provider) {
+				// default to 'local' for backward compatibility
+				row.foto_storage_provider = 'local';
 			}
 		}
 		return row;

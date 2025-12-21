@@ -147,11 +147,17 @@ const updateStep3 = async (req, res) => {
     const npwp_single = finalNpwp.length ? finalNpwp[0] : (existing.npwp || null);
     const dokumen_usaha_single = finalDokumen.length ? finalDokumen[0] : (existing.dokumen_usaha || null);
 
+    // Determine foto_path/provider for profile photo (if any)
+    const foto_path_val = profileFinal || null;
+    const foto_provider_val = foto_path_val && String(foto_path_val).startsWith('/uploads') ? 'local' : (foto_path_val ? 'external' : null);
+
     const updated = await RestaurantModel.updateStep3(id, {
       foto_ktp: foto_ktp_single,
       npwp: npwp_single,
       dokumen_usaha: dokumen_usaha_single,
-      documents_json: documentsJson
+      documents_json: documentsJson,
+      foto_path: foto_path_val,
+      foto_storage_provider: foto_provider_val
     });
 
     return res.json({ success: true, message: 'Dokumen diunggah.', data: updated });
