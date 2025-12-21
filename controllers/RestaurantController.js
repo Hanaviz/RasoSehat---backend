@@ -19,8 +19,12 @@ const create = async (req, res) => {
 
     // Enforce rule: 1 user may only have 1 restaurant
     const existing = await RestaurantModel.findByUserId(userId);
+    // Make create idempotent: if the user already has a restaurant, return it
+    // instead of returning an error. This avoids race conditions and improves UX.
     if (existing && existing.length > 0) {
-      return res.status(400).json({ success: false, message: 'User hanya boleh memiliki 1 toko/restoran.' });
+      // Return the most recent one for backward compatibility
+      const restaurant = existing.length === 1 ? existing[0] : existing.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+      return res.status(200).json({ success: true, message: 'Restoran sudah terdaftar untuk user ini.', data: restaurant });
     }
 
     const restaurant = await RestaurantModel.createStep1({ nama_restoran, alamat, user_id: userId });
