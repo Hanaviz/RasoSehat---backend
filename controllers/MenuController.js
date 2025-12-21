@@ -1,6 +1,7 @@
 const MenuModel = require('../models/MenuModel');
 const RestaurantModel = require('../models/RestaurantModel');
 const path = require('path');
+const { uploadBufferToSupabase } = require('../utils/imageHelper');
 const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
 const menuCreateController = require('./MenuCreateController');
 
@@ -89,7 +90,7 @@ const createMenu = async (req, res) => {
     console.log('[DEBUG createMenu] req.user:', user ? { id: user.id, role: user.role } : null);
     console.log('[DEBUG createMenu] req.body keys:', Object.keys(req.body || {}));
     console.log('[DEBUG createMenu] req.body sample:', req.body);
-    console.log('[DEBUG createMenu] req.file:', req.file ? { fieldname: req.file.fieldname, path: req.file.path, originalname: req.file.originalname, size: req.file.size } : null);
+    console.log('[DEBUG createMenu] req.file:', req.file ? { fieldname: req.file.fieldname, originalname: req.file.originalname, size: req.file.size } : null);
 
     const body = req.body || {};
     const file = req.file || null;
@@ -136,8 +137,19 @@ const createMenu = async (req, res) => {
       foto: null
     };
 
-    if (file) {
-      menuData.foto = `/uploads/menu/${path.basename(file.path)}`;
+    if (file && file.buffer) {
+      try {
+        const filename = `${Date.now()}-${Math.round(Math.random()*1e9)}-${file.originalname.replace(/[^a-z0-9.\-_]/gi,'')}`;
+        const dest = `menu/${restoran_id}/${filename}`;
+        const publicUrl = await uploadBufferToSupabase(file.buffer, dest, file.mimetype);
+        if (publicUrl) {
+          menuData.foto = publicUrl;
+          menuData.foto_path = publicUrl;
+          menuData.foto_storage_provider = 'supabase';
+        }
+      } catch (e) {
+        console.warn('Supabase upload failed, falling back to null photo', e.message || e);
+      }
     }
 
     if (!menuData.nama_menu) return res.status(400).json({ success: false, message: 'nama_menu wajib.' });

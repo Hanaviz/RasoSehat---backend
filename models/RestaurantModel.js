@@ -107,13 +107,16 @@ class RestaurantModel {
 				row.foto = row.documents_json.profile;
 			}
 
-			// Normalize new storage columns: prefer foto_path, but fall back to legacy `foto` if present
-			if (!row.foto_path && row.foto) {
-				row.foto_path = row.foto;
+			// Prefer foto_path if it's an absolute URL or explicitly stored in Supabase
+			const rawFoto = row.foto_path || row.foto || null;
+			if (rawFoto && (row.foto_storage_provider === 'supabase' || /^https?:\/\//i.test(rawFoto))) {
+				row.foto_path = rawFoto;
+			} else {
+				// avoid returning local /uploads references — prefer null to prevent 404s
+				row.foto_path = null;
 			}
 			if (!row.foto_storage_provider) {
-				// default to 'local' for backward compatibility
-				row.foto_storage_provider = 'local';
+				row.foto_storage_provider = row.foto_path ? 'supabase' : null;
 			}
 		}
 		return row;

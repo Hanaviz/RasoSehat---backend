@@ -253,8 +253,9 @@ const updateProfile = async (req, res) => {
 };
 
 // Upload avatar untuk user - COMPLETE FIXED VERSION
+const { uploadBufferToSupabase } = require('../utils/imageHelper');
+
 const uploadAvatar = async (req, res) => {
-    let localPath = null;
     
     try {
         const authHeader = req.headers.authorization || '';
@@ -276,69 +277,30 @@ const uploadAvatar = async (req, res) => {
                 message: 'File tidak ditemukan.' 
             });
         }
-
-        localPath = req.file.path;
-        const filename = req.file.filename;
-        
-        // Build relative URL path (akan di-serve oleh express.static)
-        const avatarUrlToSave = `/uploads/users/${filename}`;
-        
-        console.log('[DEBUG] Avatar file saved:', {
-            localPath,
-            filename,
-            avatarUrl: avatarUrlToSave
-        });
-
-        let uploadMethod = 'local';
-        let supabaseUrl = null;
-
-        // Try Supabase upload as backup (optional)
+        const file = req.file;
+        let publicUrl = null;
         try {
-            const bucket = process.env.SUPABASE_AVATAR_BUCKET || 'avatars';
-            const storagePath = `users/${decoded.id}/${filename}`;
-            const buffer = fs.readFileSync(localPath);
-
-            const { data: uploadData, error: uploadError } = await supabase.storage
-                .from(bucket)
-                .upload(storagePath, buffer, {
-                    contentType: req.file.mimetype,
-                    upsert: true,
-                });
-
-            if (!uploadError) {
-                const { data: publicData } = supabase.storage
-                    .from(bucket)
-                    .getPublicUrl(storagePath);
-                
-                if (publicData && publicData.publicUrl) {
-                    supabaseUrl = publicData.publicUrl;
-                    uploadMethod = 'supabase';
-                    console.log('[SUCCESS] Supabase backup upload successful:', supabaseUrl);
-                }
-            } else {
-                console.warn('[INFO] Supabase upload skipped/failed, using local only:', uploadError.message);
-            }
-        } catch (supabaseError) {
-            console.warn('[INFO] Supabase upload error (using local only):', supabaseError.message);
+            const filename = `${Date.now()}-${Math.round(Math.random()*1e9)}-${file.originalname.replace(/[^a-z0-9.\-_]/gi,'')}`;
+            const dest = `users/${decoded.id}/${filename}`;
+            const bucket = process.env.SUPABASE_AVATAR_BUCKET || process.env.SUPABASE_PUBLIC_IMAGES_BUCKET || 'public-images';
+            // uploadBufferToSupabase uses default BUCKET; if you want specific bucket, use supabase client directly
+            publicUrl = await uploadBufferToSupabase(file.buffer, dest, file.mimetype);
+        } catch (e) {
+            console.warn('Avatar upload to Supabase failed', e.message || e);
         }
 
-        // Save to database (always use local path for consistency)
+        const avatarUrlToSave = publicUrl || null;
         await UserModel.setAvatar(decoded.id, avatarUrlToSave);
-        console.log('[DEBUG] Avatar URL saved to database:', avatarUrlToSave);
-        
-        // Get updated user data
         const updated = await UserModel.findById(decoded.id);
         const { password: _p, ...sanitized } = updated || {};
-        
-        // Return response dengan URL yang konsisten
-        return res.status(200).json({ 
+
+        return res.status(200).json({
             success: true,
             message: 'Avatar berhasil diunggah.',
             avatar: avatarUrlToSave,
             avatar_url: avatarUrlToSave,
-            supabase_url: supabaseUrl, // Optional backup URL
-            upload_method: uploadMethod,
-            data: sanitized 
+            upload_method: publicUrl ? 'supabase' : 'none',
+            data: sanitized
         });
 
     } catch (error) {

@@ -11,19 +11,8 @@ if (!fs.existsSync(uploadsDir)) {
     console.log('[uploadAvatarMiddleware] Created directory:', uploadsDir);
 }
 
-// Configure multer storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-        // Generate unique filename
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = path.extname(file.originalname);
-        const basename = path.basename(file.originalname, ext);
-        cb(null, `${uniqueSuffix}-${basename}${ext}`);
-    }
-});
+// Use memory storage: controllers will upload to Supabase and avoid local files
+const storage = multer.memoryStorage();
 
 // File filter for images only
 const fileFilter = (req, file, cb) => {

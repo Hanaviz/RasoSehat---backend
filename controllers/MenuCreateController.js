@@ -3,6 +3,7 @@ const RestaurantModel = require('../models/RestaurantModel');
 const path = require('path');
 const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
 const supabase = require('../supabase/supabaseClient');
+const { uploadBufferToSupabase } = require('../utils/imageHelper');
 
 const createMenu = async (req, res) => {
   try {
@@ -16,6 +17,7 @@ const createMenu = async (req, res) => {
 
     // Expecting multipart/form-data
     const body = req.body || {};
+    const fotoFile = req.file || null;
     const fotoFile = req.file || null; // middleware uses single('foto')
 
     const restoran_id = body.restoran_id;
@@ -54,11 +56,19 @@ const createMenu = async (req, res) => {
       foto_storage_provider: null
     };
 
-    if (fotoFile) {
-      const rel = `/uploads/menu/${path.basename(fotoFile.path)}`;
-      menuData.foto = rel; // legacy
-      menuData.foto_path = rel;
-      menuData.foto_storage_provider = 'local';
+    if (fotoFile && fotoFile.buffer) {
+      try {
+        const filename = `${Date.now()}-${Math.round(Math.random()*1e9)}-${fotoFile.originalname.replace(/[^a-z0-9.\-_]/gi,'')}`;
+        const dest = `menu/${restoran_id}/${filename}`;
+        const publicUrl = await uploadBufferToSupabase(fotoFile.buffer, dest, fotoFile.mimetype);
+        if (publicUrl) {
+          menuData.foto = publicUrl;
+          menuData.foto_path = publicUrl;
+          menuData.foto_storage_provider = 'supabase';
+        }
+      } catch (e) {
+        console.warn('Supabase upload failed (menu create), proceeding without supabase url', e.message || e);
+      }
     }
 
     // Validate required
@@ -158,6 +168,22 @@ const updateMenu = async (req, res) => {
       const { data: krows, error: kerr } = await supabase.from('kategori_makanan').select('id').eq('id', payload.kategori_id).limit(1);
       if (kerr) { console.warn('kategori lookup failed', kerr); }
       if (!krows || !krows.length) return res.status(400).json({ error: true, message: 'kategori_id tidak ditemukan.' });
+    }
+
+    // If a new foto was uploaded (memory buffer), upload to Supabase and include in payload
+    if (fotoFile && fotoFile.buffer) {
+      try {
+        const filename = `${Date.now()}-${Math.round(Math.random()*1e9)}-${fotoFile.originalname.replace(/[^a-z0-9.\-_]/gi,'')}`;
+        const dest = `menu/${menuId}/${filename}`;
+        const publicUrl = await uploadBufferToSupabase(fotoFile.buffer, dest, fotoFile.mimetype);
+        if (publicUrl) {
+          payload.foto = publicUrl;
+          payload.foto_path = publicUrl;
+          payload.foto_storage_provider = 'supabase';
+        }
+      } catch (e) {
+        console.warn('Supabase upload failed (menu update), continuing without new foto', e.message || e);
+      }
     }
 
     // Update menu row
