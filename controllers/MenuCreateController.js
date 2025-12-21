@@ -17,7 +17,6 @@ const createMenu = async (req, res) => {
 
     // Expecting multipart/form-data
     const body = req.body || {};
-    const fotoFile = req.file || null;
     const fotoFile = req.file || null; // middleware uses single('foto')
 
     const restoran_id = body.restoran_id;
@@ -148,6 +147,7 @@ const updateMenu = async (req, res) => {
     }
 
     const body = req.body || {};
+    const fotoFile = req.file || null;
 
     // Validate numeric fields
     const numericFields = ['kalori','protein','gula','lemak','serat','lemak_jenuh','karbohidrat','kolesterol','natrium','harga','kategori_id'];

@@ -18,55 +18,54 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 /* -------------------------------------------
-   CORS CONFIG — secure, explicit origins
-   - Allows localhost:5173 and production frontend
-   - Supports credentials
-   - Handles preflight OPTIONS explicitly
+   CORS CONFIG — FULLY FIXED
 -------------------------------------------- */
 
-// Allowed origins (explicit)
+// Domain frontend utama kamu (WAJIB ADA)
+const MAIN_FRONTEND = "https://raso-sehat.vercel.app";
+
+// Default allowed origins
 const allowedOrigins = new Set([
-  'http://localhost:5173',
-  'https://rasosehat.vercel.app',
+  "http://localhost:5173",
+  "http://localhost:5174",
+  MAIN_FRONTEND,
 ]);
 
-// Also include optional env-provided frontend URL(s)
-[
+// Tambahkan juga domain dari ENV (opsional)
+const envCandidates = [
   process.env.FRONTEND_URL,
   process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
   process.env.DEPLOYED_FRONTEND_URL,
   process.env.NEXT_PUBLIC_FRONTEND_URL,
   process.env.RAILWAY_STATIC_URL,
   process.env.FRONTEND_DOMAIN,
-].forEach((u) => {
-  if (u && typeof u === 'string') allowedOrigins.add(u);
+];
+
+envCandidates.forEach((u) => {
+  if (u && typeof u === "string") allowedOrigins.add(u);
 });
 
+// Convert ke array untuk CORS
 const allowedOriginsArray = Array.from(allowedOrigins);
 
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow requests with no origin (e.g. mobile apps, server-to-server)
-    if (!origin) return callback(null, true);
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // mobile / server-to-server
 
-    if (allowedOriginsArray.includes(origin)) return callback(null, true);
+      if (allowedOriginsArray.includes(origin)) {
+        return callback(null, true);
+      }
 
-    console.warn('[CORS BLOCKED]:', origin);
-    return callback(new Error('Not allowed by CORS'));
-  },
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true,
-  optionsSuccessStatus: 204,
-};
+      console.warn("[CORS BLOCKED]:", origin);
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 
-// Register CORS middleware as early as possible
-app.use(cors(corsOptions));
-// Ensure preflight OPTIONS are handled for all routes
-app.options('*', cors(corsOptions));
-
-if (process.env.NODE_ENV !== 'production') {
-  console.log('[CORS] Allowed origins:', allowedOriginsArray);
+if (process.env.NODE_ENV !== "production") {
+  console.log("[CORS] Allowed origins:", allowedOriginsArray);
 }
 
 app.use(bodyParser.json());
