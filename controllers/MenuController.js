@@ -192,6 +192,20 @@ const deleteMenu = async (req, res) => {
       const supabase = require('../supabase/supabaseClient');
       await supabase.from('menu_bahan_baku').delete().eq('menu_id', id);
       await supabase.from('menu_diet_claims').delete().eq('menu_id', id);
+      // also remove verifikasi records and reviews + review photos to avoid FK constraint errors
+      try {
+        await supabase.from('verifikasi_menu').delete().eq('menu_id', id);
+      } catch (e) { console.warn('failed to delete verifikasi_menu rows', e); }
+      try {
+        // fetch ulasan ids for this menu to clean up review_photos
+        const { data: ulasanRows } = await supabase.from('ulasan').select('id').eq('menu_id', id);
+        const ulasanIds = (ulasanRows || []).map(r => r.id).filter(Boolean);
+        if (ulasanIds.length) {
+          await supabase.from('review_photos').delete().in('ulasan_id', ulasanIds);
+        }
+        // delete the ulasan rows
+        await supabase.from('ulasan').delete().eq('menu_id', id);
+      } catch (e) { console.warn('failed to clean ulasan/review_photos', e); }
     } catch (e) { console.warn('failed to clean pivots', e); }
 
     // delete menu

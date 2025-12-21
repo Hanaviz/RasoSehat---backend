@@ -11,9 +11,8 @@ const getMyStore = async (req, res) => {
     const userId = req.user && req.user.id;
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-    // Fetch restaurant for this seller using model
-    const restos = await RestaurantModel.findByUserId(userId);
-    const restaurant = restos && restos.length ? restos[0] : null;
+    // Fetch the seller's most recent restaurant (handles legacy duplicate rows)
+    const restaurant = await RestaurantModel.findLatestByUserId(userId);
     if (!restaurant) {
       return res.status(404).json({ success: false, message: 'Restoran penjual tidak ditemukan' });
     }
