@@ -112,6 +112,18 @@ class RestaurantModel {
 		return data || [];
 	}
 
+	// Return the most recently created restaurant for a user (used when legacy data may contain >1)
+	static async findLatestByUserId(user_id) {
+		const { data, error } = await supabase.from('restorans')
+			.select('id')
+			.eq('user_id', user_id)
+			.order('created_at', { ascending: false })
+			.limit(1);
+		if (error) { console.error('findLatestByUserId error', error); throw error; }
+		if (!data || data.length === 0) return null;
+		return this.findById(data[0].id);
+	}
+
 	static async findAll() {
 		const { data, error } = await supabase.from('restorans').select('*').order('created_at', { ascending: false });
 		if (error) { console.error('findAll restorans error', error); throw error; }

@@ -22,6 +22,8 @@ Controllers
 
 Scripts
 - `scripts/add_slug_column.js` — converted to pg queries.
+- `scripts/add_slug_column.js` — converted to pg queries.
+- `scripts/001_add_unique_userid_to_restorans.sql` — migration to ensure unique `user_id` in `restorans`. Clears `user_id` on older duplicates and adds UNIQUE constraint. See file for safe steps and notes.
 - `scripts/insert_demo_menu_demo1.js` — RETURNING id and res.rows.
 - `scripts/seed_demo_data.js` — converted queries, RETURNING where applicable.
 - `scripts/create_admin.js` — uses RETURNING for user insert.

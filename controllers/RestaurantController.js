@@ -17,6 +17,12 @@ const create = async (req, res) => {
     const { nama_restoran, alamat } = req.body;
     if (!nama_restoran || !alamat) return res.status(400).json({ success: false, message: 'Field nama_restoran dan alamat wajib.' });
 
+    // Enforce rule: 1 user may only have 1 restaurant
+    const existing = await RestaurantModel.findByUserId(userId);
+    if (existing && existing.length > 0) {
+      return res.status(400).json({ success: false, message: 'User hanya boleh memiliki 1 toko/restoran.' });
+    }
+
     const restaurant = await RestaurantModel.createStep1({ nama_restoran, alamat, user_id: userId });
     return res.status(201).json({ success: true, message: 'Restoran dibuat (step 1).', data: restaurant });
   } catch (error) {
@@ -208,13 +214,13 @@ const getMyStore = async (req, res) => {
     const userId = req.user && req.user.id;
     if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-    const rows = await RestaurantModel.findByUserId(userId);
-    if (!rows || rows.length === 0) {
+    // Fetch the single restaurant for this user.
+    // Note: legacy data may contain >1 restaurant per user — in that case we choose the MOST RECENT one.
+    // This preserves backward-compatibility while enforcing 1 user = 1 store behavior in the API layer.
+    const restaurant = await RestaurantModel.findLatestByUserId(userId);
+    if (!restaurant) {
       return res.json({ success: true, restaurant: null, menus: [], menuStats: { totalMenu: 0, pending: 0, approved: 0, rejected: 0 } });
     }
-
-    // Use first restaurant if multiple
-    const restaurant = await RestaurantModel.findById(rows[0].id);
 
     // Fetch menus for this restaurant
     const MenuModel = require('../models/MenuModel');
