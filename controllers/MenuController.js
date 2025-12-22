@@ -1,6 +1,8 @@
 const MenuModel = require('../models/MenuModel');
 const RestaurantModel = require('../models/RestaurantModel');
 const path = require('path');
+const fs = require('fs');
+const supabase = require('../supabase/supabaseClient');
 const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
 const menuCreateController = require('./MenuCreateController');
 
@@ -137,7 +139,33 @@ const createMenu = async (req, res) => {
     };
 
     if (file) {
-      menuData.foto = `/uploads/menu/${path.basename(file.path)}`;
+      const rel = `/uploads/menu/${path.basename(file.path)}`;
+      menuData.foto = rel;
+      menuData.foto_path = rel;
+      menuData.foto_storage_provider = 'local';
+
+      // Try Supabase backup upload (optional) so production with ephemeral FS still serves images
+      try {
+        const bucket = process.env.SUPABASE_MENU_BUCKET || 'menu';
+        const storagePath = `menu/${restoran_id}/${path.basename(file.path)}`;
+        const buffer = fs.readFileSync(file.path);
+        const { data: uploadData, error: uploadError } = await supabase.storage.from(bucket).upload(storagePath, buffer, {
+          contentType: file.mimetype,
+          upsert: true
+        });
+        if (!uploadError) {
+          const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+          if (publicData && publicData.publicUrl) {
+            menuData.foto_path = publicData.publicUrl;
+            menuData.foto_storage_provider = 'supabase';
+            console.log('[INFO] Supabase menu image uploaded:', publicData.publicUrl);
+          }
+        } else {
+          console.warn('[INFO] Supabase menu upload failed:', uploadError.message || uploadError);
+        }
+      } catch (e) {
+        console.warn('[INFO] Supabase menu upload error, continuing with local path:', e.message || e);
+      }
     }
 
     if (!menuData.nama_menu) return res.status(400).json({ success: false, message: 'nama_menu wajib.' });
