@@ -23,7 +23,8 @@ async function getPublicImageUrl(p, provider) {
       // fallback to constructed URL (deterministic)
       try {
         const supaUrl = process.env.SUPABASE_URL.replace(/\/$/, '');
-        return `${supaUrl}/storage/v1/object/public/${BUCKET}/${encodeURIComponent(storagePath)}`;
+        const encodedPath = storagePath.split('/').map(seg => encodeURIComponent(seg)).join('/');
+        return `${supaUrl}/storage/v1/object/public/${BUCKET}/${encodedPath}`;
       } catch (ee) { return null; }
     }
   }
