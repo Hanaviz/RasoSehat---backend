@@ -156,7 +156,6 @@ const updateStep3 = async (req, res) => {
     try { existingDocs = existing.documents_json ? JSON.parse(existing.documents_json) : null; } catch (e) { existingDocs = null; }
 
     // Convert any legacy stored paths to Supabase public URLs where possible
-    const storageHelper = require('../utils/storageHelper');
     const toPublic = (v) => {
       if (!v) return null;
       try { return storageHelper.buildPublicUrlFromStoredPath(v) || (typeof v === 'string' && /^https?:\/\//i.test(v) ? v : null); } catch (e) { return null; }
