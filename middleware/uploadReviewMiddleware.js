@@ -2,8 +2,21 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-// Use memory storage to allow controllers to upload directly to Supabase
-const storage = multer.memoryStorage();
+const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'reviews');
+
+// Ensure upload directory exists
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, UPLOAD_DIR);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const name = `${Date.now()}-${Math.round(Math.random()*1e9)}${ext}`;
+    cb(null, name);
+  }
+});
 
 const ALLOWED_MIMES = [
   'image/jpeg', 'image/png', 'image/webp'

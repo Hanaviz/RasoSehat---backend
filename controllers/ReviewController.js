@@ -25,31 +25,20 @@ const tambahUlasan = async (req, res) => {
 
     const reviewId = await ReviewModel.create({ user_id, menu_id: menuIdNum, rating: ratingNum, komentar });
 
-    // If files were uploaded, upload to Supabase and persist records to review_photos
+    // If files were uploaded, persist records to review_photos
     try {
       const files = req.files || [];
       if (files.length > 0) {
-        const { uploadBufferToSupabase } = require('../utils/imageHelper');
-        const insertRows = [];
-        for (const f of files) {
-          try {
-            const filename = `${Date.now()}-${Math.round(Math.random()*1e9)}-${f.originalname.replace(/[^a-z0-9.\-_]/gi,'')}`;
-            const dest = `reviews/${reviewId}/${filename}`;
-            const publicUrl = await uploadBufferToSupabase(f.buffer, dest, f.mimetype);
-            insertRows.push({
-              ulasan_id: reviewId,
-              path: publicUrl || null,
-              storage_provider: publicUrl ? 'supabase' : 'local',
-              metadata: JSON.stringify({ originalname: f.originalname, mimetype: f.mimetype, size: f.size })
-            });
-          } catch (e) {
-            console.warn('Failed to upload review photo to supabase', e.message || e);
-          }
-        }
+        const insertRows = files.map(f => ({
+          ulasan_id: reviewId,
+          path: `/uploads/reviews/${f.filename}`,
+          storage_provider: 'local',
+          metadata: JSON.stringify({ originalname: f.originalname, mimetype: f.mimetype, size: f.size })
+        }));
 
-        if (insertRows.length) {
-          const { data: photoData, error: photoErr } = await supabase.from('review_photos').insert(insertRows);
-          if (photoErr) console.error('Failed to insert review_photos', photoErr);
+        const { data: photoData, error: photoErr } = await supabase.from('review_photos').insert(insertRows);
+        if (photoErr) {
+          console.error('Failed to insert review_photos', photoErr);
         }
       }
     } catch (e) {

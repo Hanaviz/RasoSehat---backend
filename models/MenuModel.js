@@ -26,10 +26,8 @@ const MenuModel = {
     getMenuHydrated: (r) => {
         if (!r) return null;
         // Prefer `foto_path` (new column) but keep `foto` for backward compatibility
-        const rawFotoPath = r.foto_path || r.foto || null;
-        // Only expose foto_path when it's an absolute URL or explicitly stored in Supabase
+        const fotoPath = r.foto_path || r.foto || null;
         const fotoProvider = r.foto_storage_provider || null;
-        const fotoPath = (rawFotoPath && (fotoProvider === 'supabase' || /^https?:\/\//i.test(rawFotoPath))) ? rawFotoPath : null;
 
         return {
             id: r.id,
@@ -37,7 +35,7 @@ const MenuModel = {
             slug: r.slug,
             harga: r.harga,
             // expose both new and legacy fields
-            foto: null,
+            foto: r.foto || null,
             foto_path: fotoPath,
             foto_storage_provider: fotoProvider,
             status_verifikasi: r.status_verifikasi,

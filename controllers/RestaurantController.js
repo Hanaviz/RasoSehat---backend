@@ -118,44 +118,20 @@ const updateStep3 = async (req, res) => {
     // Support multi-file uploads and store as JSON arrays under `documents_json`.
     // Expected upload fields: foto_ktp (array), npwp (array), dokumen_usaha (array)
     const files = req.files || {};
-    const { uploadBufferToSupabase } = require('../utils/imageHelper');
+    const buildUrl = (file) => file ? `/uploads/restoran/${path.basename(file.path)}` : null;
 
-    // Helper: convert multer file object to public URL (if buffer present upload)
-    const fileToPublicUrl = async (file, subdir) => {
-      if (!file) return null;
-      // If file already has a public URL (unlikely), return it
-      if (file.publicUrl) return file.publicUrl;
-      if (file.buffer) {
-        const safeName = (file.originalname || 'file').replace(/[^a-z0-9.\-_.]/gi, '');
-        const filename = `${Date.now()}-${Math.round(Math.random()*1e9)}-${safeName}`;
-        const dest = `${subdir}/${filename}`;
-        try {
-          const pub = await uploadBufferToSupabase(file.buffer, dest, file.mimetype);
-          return pub;
-        } catch (e) {
-          console.warn('Failed to upload restaurant doc to supabase', e.message || e);
-          return null;
-        }
-      }
-      return null;
-    };
+    // Collect arrays from uploaded files
+    const collectPaths = (arr) => Array.isArray(arr) ? arr.map(f => buildUrl(f)).filter(Boolean) : [];
 
-    // Collect arrays from uploaded files (async)
-    const collectPaths = async (arr, subdir) => {
-      if (!Array.isArray(arr)) return [];
-      const results = await Promise.all(arr.map(f => fileToPublicUrl(f, subdir)));
-      return results.filter(Boolean);
-    };
-
-    const fotoArr = await collectPaths(files.foto_ktp || [], `restoran/${id}/foto_ktp`);
-    const npwpArr = await collectPaths(files.npwp || [], `restoran/${id}/npwp`);
-    const dokumenArr = await collectPaths(files.dokumen_usaha || [], `restoran/${id}/dokumen`);
+    const fotoArr = collectPaths(files.foto_ktp);
+    const npwpArr = collectPaths(files.npwp);
+    const dokumenArr = collectPaths(files.dokumen_usaha);
 
     // Profile photo (single file) support: accept field name `foto`
     let fotoProfileUrl = null;
     const fotoField = files.foto;
-    if (Array.isArray(fotoField) && fotoField.length) fotoProfileUrl = await fileToPublicUrl(fotoField[0], `restoran/${id}/profile`);
-    else if (fotoField && fotoField.buffer) fotoProfileUrl = await fileToPublicUrl(fotoField, `restoran/${id}/profile`);
+    if (Array.isArray(fotoField) && fotoField.length) fotoProfileUrl = buildUrl(fotoField[0]);
+    else if (fotoField && fotoField.path) fotoProfileUrl = buildUrl(fotoField);
 
     // If no new uploads for a category, try to reuse existing documents_json or single-file columns
     let existingDocs = null;
@@ -166,7 +142,7 @@ const updateStep3 = async (req, res) => {
     const finalDokumen = dokumenArr.length ? dokumenArr : (existingDocs && Array.isArray(existingDocs.dokumen_usaha) ? existingDocs.dokumen_usaha : (existing.dokumen_usaha ? [existing.dokumen_usaha] : []));
 
     // include profile foto in documents_json under key `profile` for backward compatibility
-    const profileFromExisting = (existingDocs && existingDocs.profile) ? existingDocs.profile : (existing.foto_path || existing.foto || null);
+    const profileFromExisting = (existingDocs && existingDocs.profile) ? existingDocs.profile : (existing.foto || null);
     const profileFinal = fotoProfileUrl || profileFromExisting || null;
     const documentsJson = JSON.stringify({ profile: profileFinal, foto_ktp: finalFoto, npwp: finalNpwp, dokumen_usaha: finalDokumen });
 
@@ -177,7 +153,7 @@ const updateStep3 = async (req, res) => {
 
     // Determine foto_path/provider for profile photo (if any)
     const foto_path_val = profileFinal || null;
-    const foto_provider_val = foto_path_val && String(foto_path_val).startsWith('http') ? 'supabase' : (foto_path_val ? 'external' : null);
+    const foto_provider_val = foto_path_val && String(foto_path_val).startsWith('/uploads') ? 'local' : (foto_path_val ? 'external' : null);
 
     const updated = await RestaurantModel.updateStep3(id, {
       foto_ktp: foto_ktp_single,
