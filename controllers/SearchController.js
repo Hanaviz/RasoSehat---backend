@@ -1,4 +1,5 @@
 const supabase = require('../supabase/supabaseClient');
+const { buildPublicUrlFromStoredPath } = require('../utils/storageHelper');
 
 /**
  * Search Controller - Simple ILIKE-based search
@@ -115,8 +116,8 @@ const search = async (req, res) => {
         price: menu.harga || 0,
         rating: menu.rating || 0,
           foto: menu.foto || null,
-          foto_path: menu.foto_path || menu.foto || null,
-          foto_storage_provider: menu.foto_storage_provider || null,
+          foto_path: (function(){ const raw = menu.foto_path || menu.foto || null; try { if (!raw) return null; if (/^https?:\/\//i.test(String(raw))) return String(raw).trim(); return buildPublicUrlFromStoredPath(raw) || null; } catch(e){return null;} })(),
+          foto_storage_provider: (function(){ const v = menu.foto_path || menu.foto || null; try { if (!v) return null; if (/^https?:\/\//i.test(String(v))) { const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, ''); return SUPABASE_URL && String(v).includes(SUPABASE_URL) ? 'supabase' : 'external'; } const pub = buildPublicUrlFromStoredPath(v); return pub ? 'supabase' : null; } catch(e){return null;} })(),
         restaurant: menu.restorans?.nama_restoran || '',
         restaurant_slug: menu.restorans?.slug || ''
       }));
@@ -230,8 +231,8 @@ const search = async (req, res) => {
           price: menu.harga || 0,
           rating: menu.rating || 0,
           foto: menu.foto || null,
-          foto_path: menu.foto_path || menu.foto || null,
-          foto_storage_provider: menu.foto_storage_provider || null,
+          foto_path: (function(){ const raw = menu.foto_path || menu.foto || null; try { if (!raw) return null; if (/^https?:\/\//i.test(String(raw))) return String(raw).trim(); return buildPublicUrlFromStoredPath(raw) || null; } catch(e){return null;} })(),
+          foto_storage_provider: (function(){ const v = menu.foto_path || menu.foto || null; try { if (!v) return null; if (/^https?:\/\//i.test(String(v))) { const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, ''); return SUPABASE_URL && String(v).includes(SUPABASE_URL) ? 'supabase' : 'external'; } const pub = buildPublicUrlFromStoredPath(v); return pub ? 'supabase' : null; } catch(e){return null;} })(),
           restaurant: menu.restorans?.nama_restoran || '',
           restaurant_slug: menu.restorans?.slug || ''
         }));

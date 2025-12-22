@@ -55,10 +55,28 @@ const createMenu = async (req, res) => {
     };
 
     if (fotoFile) {
-      const rel = `/uploads/menu/${path.basename(fotoFile.path)}`;
-      menuData.foto = rel; // legacy
-      menuData.foto_path = rel;
-      menuData.foto_storage_provider = 'local';
+      // Try to upload to Supabase storage and store the public URL.
+      try {
+        const storageHelper = require('../utils/storageHelper');
+        const bucket = process.env.SUPABASE_MENU_BUCKET || process.env.SUPABASE_UPLOAD_BUCKET || 'uploads';
+        const dest = `menu/${restoran_id}/${path.basename(fotoFile.path)}`;
+        const publicUrl = await storageHelper.uploadFileToBucket(fotoFile.path, dest, bucket, { contentType: fotoFile.mimetype });
+        if (publicUrl) {
+          menuData.foto = null;
+          menuData.foto_path = publicUrl;
+          menuData.foto_storage_provider = 'supabase';
+        } else {
+          // If upload fails unexpectedly, leave fields null to avoid serving local /uploads
+          menuData.foto = null;
+          menuData.foto_path = null;
+          menuData.foto_storage_provider = null;
+        }
+      } catch (e) {
+        console.warn('Supabase upload failed for menu image, skipping:', e.message || e);
+        menuData.foto = null;
+        menuData.foto_path = null;
+        menuData.foto_storage_provider = null;
+      }
     }
 
     // Validate required

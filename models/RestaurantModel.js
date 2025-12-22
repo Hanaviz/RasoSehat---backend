@@ -1,4 +1,5 @@
 const supabase = require('../supabase/supabaseClient');
+const { buildPublicUrlFromStoredPath } = require('../utils/storageHelper');
 
 class RestaurantModel {
 	static async createStep1({ nama_restoran, alamat, user_id }) {
@@ -115,6 +116,18 @@ class RestaurantModel {
 				// default to 'local' for backward compatibility
 				row.foto_storage_provider = 'local';
 			}
+
+			// If foto_path exists but is not an absolute URL, convert it to a Supabase public URL
+			try {
+				if (row.foto_path && !/^https?:\/\//i.test(String(row.foto_path))) {
+					const bucket = process.env.SUPABASE_MENU_BUCKET || process.env.SUPABASE_UPLOAD_BUCKET || process.env.SUPABASE_BUCKET || 'uploads';
+					const publicUrl = buildPublicUrlFromStoredPath(row.foto_path, bucket);
+					if (publicUrl) {
+						row.foto_path = publicUrl;
+						row.foto_storage_provider = 'supabase';
+					}
+				}
+			} catch (e) { /* ignore conversion errors */ }
 		}
 		return row;
 	}

@@ -1,4 +1,5 @@
 const supabase = require('../supabase/supabaseClient');
+const { buildPublicUrlFromStoredPath } = require('../utils/storageHelper');
 
 const slugify = (text) => {
     if (!text) return null;
@@ -26,18 +27,35 @@ const MenuModel = {
     getMenuHydrated: (r) => {
         if (!r) return null;
         // Prefer `foto_path` (new column) but keep `foto` for backward compatibility
-        const fotoPath = r.foto_path || r.foto || null;
-        const fotoProvider = r.foto_storage_provider || null;
+        const rawFoto = r.foto_path || r.foto || null;
+        let finalFotoPath = null;
+        let finalProvider = null;
+        try {
+            if (rawFoto && /^https?:\/\//i.test(String(rawFoto))) {
+                finalFotoPath = String(rawFoto).trim();
+                const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+                finalProvider = SUPABASE_URL && finalFotoPath.includes(SUPABASE_URL) ? 'supabase' : 'external';
+            } else if (rawFoto) {
+                const pub = buildPublicUrlFromStoredPath(rawFoto);
+                if (pub) {
+                    finalFotoPath = pub;
+                    finalProvider = 'supabase';
+                } else {
+                    finalFotoPath = null;
+                    finalProvider = null;
+                }
+            }
+        } catch (e) { finalFotoPath = null; finalProvider = null; }
 
         return {
             id: r.id,
             nama_menu: r.nama_menu,
             slug: r.slug,
             harga: r.harga,
-            // expose both new and legacy fields
+            // expose both new and legacy fields (but ensure foto_path is a public URL or null)
             foto: r.foto || null,
-            foto_path: fotoPath,
-            foto_storage_provider: fotoProvider,
+            foto_path: finalFotoPath,
+            foto_storage_provider: finalProvider,
             status_verifikasi: r.status_verifikasi,
             kategori: r.kategori_makanan ? { id: r.kategori_id || null, nama_kategori: r.kategori_makanan?.nama_kategori || null } : (r.kategori_id ? { id: r.kategori_id } : null),
             restoran: r.restorans ? { id: r.restorans.id || r.restoran_id, nama_restoran: r.restorans.nama_restoran || null, alamat: r.restorans.alamat || null, no_telepon: r.restorans.no_telepon || null, latitude: r.restorans.latitude || null, longitude: r.restorans.longitude || null, slug: r.restorans.slug || null } : (r.restoran_id ? { id: r.restoran_id } : null),
@@ -139,8 +157,27 @@ const MenuModel = {
             deskripsi: r.deskripsi,
             harga: r.harga,
             foto: r.foto || null,
-            foto_path: r.foto_path || r.foto || null,
-            foto_storage_provider: r.foto_storage_provider || null,
+            foto_path: (function(){
+                const raw = r.foto_path || r.foto || null;
+                try {
+                    if (!raw) return null;
+                    if (/^https?:\/\//i.test(String(raw))) return String(raw).trim();
+                    return buildPublicUrlFromStoredPath(raw) || null;
+                } catch(e) { return null; }
+            })(),
+            foto_storage_provider: (function(){
+                const v = (r.foto_path || r.foto || null);
+                try {
+                    if (!v) return null;
+                    if (/^https?:\/\//i.test(String(v))) {
+                        const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+                        return SUPABASE_URL && String(v).includes(SUPABASE_URL) ? 'supabase' : 'external';
+                    }
+                    // if we can build a public url, treat as supabase
+                    const pub = buildPublicUrlFromStoredPath(v);
+                    return pub ? 'supabase' : null;
+                } catch (e) { return null; }
+            })(),
             slug: r.slug,
             status_verifikasi: r.status_verifikasi,
             kalori: r.kalori,
@@ -184,8 +221,26 @@ const MenuModel = {
                     deskripsi: r.deskripsi,
                     harga: r.harga,
                         foto: r.foto || null,
-                        foto_path: r.foto_path || r.foto || null,
-                        foto_storage_provider: r.foto_storage_provider || null,
+                        foto_path: (function(){
+                            const raw = r.foto_path || r.foto || null;
+                            try {
+                                if (!raw) return null;
+                                if (/^https?:\/\//i.test(String(raw))) return String(raw).trim();
+                                return buildPublicUrlFromStoredPath(raw) || null;
+                            } catch(e) { return null; }
+                        })(),
+                        foto_storage_provider: (function(){
+                            const v = (r.foto_path || r.foto || null);
+                            try {
+                                if (!v) return null;
+                                if (/^https?:\/\//i.test(String(v))) {
+                                    const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+                                    return SUPABASE_URL && String(v).includes(SUPABASE_URL) ? 'supabase' : 'external';
+                                }
+                                const pub = buildPublicUrlFromStoredPath(v);
+                                return pub ? 'supabase' : null;
+                            } catch (e) { return null; }
+                        })(),
                     slug: r.slug,
                     status_verifikasi: r.status_verifikasi,
                     nama_restoran: r.restorans?.nama_restoran || null,
@@ -225,8 +280,26 @@ const MenuModel = {
                     deskripsi: r.deskripsi,
                     harga: r.harga,
                         foto: r.foto || null,
-                        foto_path: r.foto_path || r.foto || null,
-                        foto_storage_provider: r.foto_storage_provider || null,
+                        foto_path: (function(){
+                            const raw = r.foto_path || r.foto || null;
+                            try {
+                                if (!raw) return null;
+                                if (/^https?:\/\//i.test(String(raw))) return String(raw).trim();
+                                return buildPublicUrlFromStoredPath(raw) || null;
+                            } catch(e) { return null; }
+                        })(),
+                        foto_storage_provider: (function(){
+                            const v = (r.foto_path || r.foto || null);
+                            try {
+                                if (!v) return null;
+                                if (/^https?:\/\//i.test(String(v))) {
+                                    const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+                                    return SUPABASE_URL && String(v).includes(SUPABASE_URL) ? 'supabase' : 'external';
+                                }
+                                const pub = buildPublicUrlFromStoredPath(v);
+                                return pub ? 'supabase' : null;
+                            } catch (e) { return null; }
+                        })(),
                     slug: r.slug,
                     status_verifikasi: r.status_verifikasi,
                     nama_restoran: r.restorans?.nama_restoran || null,
@@ -305,8 +378,26 @@ MenuModel.findByDietClaim = async (claimKey, limit = 12) => {
             deskripsi: r.deskripsi,
             harga: r.harga,
             foto: r.foto || null,
-            foto_path: r.foto_path || r.foto || null,
-            foto_storage_provider: r.foto_storage_provider || null,
+            foto_path: (function(){
+                const raw = r.foto_path || r.foto || null;
+                try {
+                    if (!raw) return null;
+                    if (/^https?:\/\//i.test(String(raw))) return String(raw).trim();
+                    return buildPublicUrlFromStoredPath(raw) || null;
+                } catch(e) { return null; }
+            })(),
+            foto_storage_provider: (function(){
+                const v = (r.foto_path || r.foto || null);
+                try {
+                    if (!v) return null;
+                    if (/^https?:\/\//i.test(String(v))) {
+                        const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+                        return SUPABASE_URL && String(v).includes(SUPABASE_URL) ? 'supabase' : 'external';
+                    }
+                    const pub = buildPublicUrlFromStoredPath(v);
+                    return pub ? 'supabase' : null;
+                } catch (e) { return null; }
+            })(),
                 kalori: r.kalori,
                 karbohidrat: r.karbohidrat,
                 kolesterol: r.kolesterol,
@@ -422,8 +513,26 @@ MenuModel.findByRestaurantId = async (restoranId) => {
             slug: r.slug,
             harga: r.harga,
                 foto: r.foto || null,
-                foto_path: r.foto_path || r.foto || null,
-                foto_storage_provider: r.foto_storage_provider || null,
+                foto_path: (function(){
+                    const raw = r.foto_path || r.foto || null;
+                    try {
+                        if (!raw) return null;
+                        if (/^https?:\/\//i.test(String(raw))) return String(raw).trim();
+                        return buildPublicUrlFromStoredPath(raw) || null;
+                    } catch(e) { return null; }
+                })(),
+                foto_storage_provider: (function(){
+                    const v = (r.foto_path || r.foto || null);
+                    try {
+                        if (!v) return null;
+                        if (/^https?:\/\//i.test(String(v))) {
+                            const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+                            return SUPABASE_URL && String(v).includes(SUPABASE_URL) ? 'supabase' : 'external';
+                        }
+                        const pub = buildPublicUrlFromStoredPath(v);
+                        return pub ? 'supabase' : null;
+                    } catch (e) { return null; }
+                })(),
             status_verifikasi: r.status_verifikasi,
             kategori: r.kategori_makanan?.nama_kategori || null,
             kalori: r.kalori,

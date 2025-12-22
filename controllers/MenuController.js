@@ -139,32 +139,25 @@ const createMenu = async (req, res) => {
     };
 
     if (file) {
-      const rel = `/uploads/menu/${path.basename(file.path)}`;
-      menuData.foto = rel;
-      menuData.foto_path = rel;
-      menuData.foto_storage_provider = 'local';
-
-      // Try Supabase backup upload (optional) so production with ephemeral FS still serves images
       try {
-        const bucket = process.env.SUPABASE_MENU_BUCKET || 'menu';
-        const storagePath = `menu/${restoran_id}/${path.basename(file.path)}`;
-        const buffer = fs.readFileSync(file.path);
-        const { data: uploadData, error: uploadError } = await supabase.storage.from(bucket).upload(storagePath, buffer, {
-          contentType: file.mimetype,
-          upsert: true
-        });
-        if (!uploadError) {
-          const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(storagePath);
-          if (publicData && publicData.publicUrl) {
-            menuData.foto_path = publicData.publicUrl;
-            menuData.foto_storage_provider = 'supabase';
-            console.log('[INFO] Supabase menu image uploaded:', publicData.publicUrl);
-          }
+        const storageHelper = require('../utils/storageHelper');
+        const bucket = process.env.SUPABASE_MENU_BUCKET || process.env.SUPABASE_UPLOAD_BUCKET || 'uploads';
+        const dest = `menu/${restoran_id}/${path.basename(file.path)}`;
+        const publicUrl = await storageHelper.uploadFileToBucket(file.path, dest, bucket, { contentType: file.mimetype });
+        if (publicUrl) {
+          menuData.foto = null;
+          menuData.foto_path = publicUrl;
+          menuData.foto_storage_provider = 'supabase';
         } else {
-          console.warn('[INFO] Supabase menu upload failed:', uploadError.message || uploadError);
+          menuData.foto = null;
+          menuData.foto_path = null;
+          menuData.foto_storage_provider = null;
         }
       } catch (e) {
-        console.warn('[INFO] Supabase menu upload error, continuing with local path:', e.message || e);
+        console.warn('[INFO] Supabase menu upload error, skipping local path:', e.message || e);
+        menuData.foto = null;
+        menuData.foto_path = null;
+        menuData.foto_storage_provider = null;
       }
     }
 
