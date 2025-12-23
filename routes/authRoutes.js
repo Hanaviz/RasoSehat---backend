@@ -22,5 +22,7 @@ router.get('/profile', authController.getProfile);
 router.put('/profile', authController.updateProfile);
 router.patch('/change-password', authController.changePassword);
 router.post('/avatar', uploadAvatar.single('avatar'), authController.uploadAvatar);
+router.post('/forgot-password', authController.forgotPassword);
+router.post('/reset-password', authController.resetPassword);
 
 module.exports = router;

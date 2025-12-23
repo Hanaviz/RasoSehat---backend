@@ -256,4 +256,9 @@ async function sendStoreVerificationEmailTo(email, status, note, restaurantId = 
 module.exports = {
   sendStoreVerificationEmail,
   sendStoreVerificationEmailTo,
+  // Expose generic sendMail for other controllers (will be a noop if nodemailer not installed)
+  sendMail,
+  // Expose config constants useful for building links
+  FRONTEND_URL,
+  EMAIL_FROM,
 };
