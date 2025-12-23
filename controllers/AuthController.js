@@ -384,95 +384,7 @@ const changePassword = async (req, res) => {
         }
 
         const decoded = jwt.verify(token, SECRET_KEY);
-        const forgotPassword = async (req, res) => {
-            try {
-                const { email } = req.body || {};
-                if (!email) return res.status(400).json({ success: false, message: 'Email diperlukan.' });
-
-                // Generate a secure random token
-                const crypto = require('crypto');
-                const token = crypto.randomBytes(32).toString('hex');
-                const expiresAt = new Date(Date.now() + (60 * 60 * 1000)); // 1 hour
-
-                // insert into password_resets table
-                try {
-                    await supabase.from('password_resets').insert({ email, token, expires_at: expiresAt.toISOString() });
-                } catch (dbErr) {
-                    console.warn('Failed to insert password_resets row:', dbErr?.message || dbErr);
-                }
-
-                // Send email with reset link (do not reveal whether email exists)
-                const { sendMail, FRONTEND_URL, EMAIL_FROM } = require('../utils/emailService');
-                const resetLink = `${String(FRONTEND_URL).replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
-
-                const subject = 'Permintaan Reset Kata Sandi — RasoSehat';
-                const html = `
-                    <p>Hai,</p>
-                    <p>Kami menerima permintaan untuk mereset kata sandi akun ini. Klik tombol di bawah untuk mengganti kata sandi (tautan berlaku 1 jam).</p>
-                    <p><a href="${resetLink}" style="display:inline-block;padding:10px 14px;background:#10b981;color:#fff;border-radius:6px;text-decoration:none">Reset Kata Sandi</a></p>
-                    <p>Jika Anda tidak meminta reset, abaikan email ini.</p>
-                `;
-
-                try {
-                    await sendMail({ from: EMAIL_FROM, to: email, subject, html, text: `Reset password: ${resetLink}` });
-                } catch (mailErr) {
-                    console.warn('sendMail failed for forgotPassword:', mailErr?.message || mailErr);
-                }
-
-                // Always return success to avoid leaking whether the email exists
-                return res.status(200).json({ success: true, message: 'Jika email terdaftar, instruksi reset telah dikirim.' });
-            } catch (error) {
-                console.error('forgotPassword error', error);
-                return res.status(500).json({ success: false, message: 'Gagal memproses permintaan reset.' });
-            }
-        };
-
-        // Reset password: verify token and update password
-        const resetPassword = async (req, res) => {
-            try {
-                const { token, email, newPassword, confirmPassword } = req.body || {};
-                if (!token || !email || !newPassword || !confirmPassword) return res.status(400).json({ success: false, message: 'Semua field diperlukan.' });
-                if (newPassword !== confirmPassword) return res.status(400).json({ success: false, message: 'Konfirmasi kata sandi tidak cocok.' });
-                if (typeof newPassword !== 'string' || newPassword.length < 8) return res.status(400).json({ success: false, message: 'Kata sandi minimal 8 karakter.' });
-
-                // Find valid token
-                const { data: rows, error } = await supabase.from('password_resets').select('*').eq('token', token).eq('email', email).limit(1).order('created_at', { ascending: false });
-                if (error) {
-                    console.error('supabase select password_resets error', error);
-                    return res.status(500).json({ success: false, message: 'Kesalahan server.' });
-                }
-
-                const row = (rows && rows[0]) || null;
-                if (!row) return res.status(400).json({ success: false, message: 'Token tidak valid atau sudah digunakan.' });
-                if (row.used) return res.status(400).json({ success: false, message: 'Token sudah digunakan.' });
-                if (new Date(row.expires_at) < new Date()) return res.status(400).json({ success: false, message: 'Token telah kadaluarsa.' });
-
-                // Update user password
-                const salt = await bcrypt.genSalt(10);
-                const hashed = await bcrypt.hash(newPassword, salt);
-                // Find user by email
-                const user = await UserModel.findByEmail(email);
-                if (!user) {
-                    // Still mark token used to avoid reuse
-                    try { await supabase.from('password_resets').update({ used: true, used_at: new Date().toISOString() }).eq('id', row.id); } catch (e) {}
-                    return res.status(400).json({ success: false, message: 'Akun tidak ditemukan.' });
-                }
-
-                await UserModel.updatePassword(user.id, hashed);
-
-                // Mark token used
-                try {
-                    await supabase.from('password_resets').update({ used: true, used_at: new Date().toISOString() }).eq('id', row.id);
-                } catch (e) {
-                    console.warn('Failed to mark password_resets used', e?.message || e);
-                }
-
-                return res.status(200).json({ success: true, message: 'Kata sandi berhasil diubah. Silakan login dengan kata sandi baru.' });
-            } catch (error) {
-                console.error('resetPassword error', error);
-                return res.status(500).json({ success: false, message: 'Gagal mereset kata sandi.' });
-            }
-        };
+        // (forgot/reset password removed)
         const userId = decoded && decoded.id;
         if (!userId) return res.status(401).json({ success: false, message: 'User tidak terautentikasi.' });
 
@@ -524,6 +436,4 @@ module.exports = {
     updateProfile, 
     uploadAvatar,
     changePassword
-    forgotPassword,
-    resetPassword
 };
