@@ -1,6 +1,7 @@
 const RestaurantModel = require('../models/RestaurantModel');
 const supabase = require('../supabase/supabaseClient');
 const path = require('path');
+const storageHelper = require('../utils/storageHelper');
 
 // Helper to ensure ownership or admin
 function checkOwnership(reqUser, resourceOwnerId) {
@@ -119,7 +120,6 @@ const updateStep3 = async (req, res) => {
     // Expected upload fields: foto_ktp (array), npwp (array), dokumen_usaha (array)
     const files = req.files || {};
     // helper: upload a local file to Supabase and return public URL (or null)
-    const storageHelper = require('../utils/storageHelper');
     const bucket = process.env.SUPABASE_RESTORAN_BUCKET || process.env.SUPABASE_UPLOAD_BUCKET || process.env.SUPABASE_MENU_BUCKET || 'uploads';
 
     const uploadFile = async (file, subfolder) => {

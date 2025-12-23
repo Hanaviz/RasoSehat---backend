@@ -3,6 +3,7 @@ const RestaurantModel = require('../models/RestaurantModel');
 const path = require('path');
 const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
 const supabase = require('../supabase/supabaseClient');
+const storageHelper = require('../utils/storageHelper');
 
 const createMenu = async (req, res) => {
   try {
@@ -57,7 +58,6 @@ const createMenu = async (req, res) => {
     if (fotoFile) {
       // Try to upload to Supabase storage and store the public URL.
       try {
-        const storageHelper = require('../utils/storageHelper');
         const bucket = process.env.SUPABASE_MENU_BUCKET || process.env.SUPABASE_UPLOAD_BUCKET || 'uploads';
         const dest = `menu/${restoran_id}/${path.basename(fotoFile.path)}`;
         const publicUrl = await storageHelper.uploadFileToBucket(fotoFile.path, dest, bucket, { contentType: fotoFile.mimetype });

@@ -5,6 +5,7 @@ const fs = require('fs');
 const supabase = require('../supabase/supabaseClient');
 const { syncMenuBahan, syncMenuDietClaims } = require('../utils/pivotHelper');
 const menuCreateController = require('./MenuCreateController');
+const storageHelper = require('../utils/storageHelper');
 
 const list = async (req, res) => {
   try {
@@ -140,7 +141,6 @@ const createMenu = async (req, res) => {
 
     if (file) {
       try {
-        const storageHelper = require('../utils/storageHelper');
         const bucket = process.env.SUPABASE_MENU_BUCKET || process.env.SUPABASE_UPLOAD_BUCKET || 'uploads';
         const dest = `menu/${restoran_id}/${path.basename(file.path)}`;
         const publicUrl = await storageHelper.uploadFileToBucket(file.path, dest, bucket, { contentType: file.mimetype });
