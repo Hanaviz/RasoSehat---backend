@@ -374,11 +374,65 @@ const uploadAvatar = async (req, res) => {
     }
 };
 
+// Change password for authenticated user
+const changePassword = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization || '';
+        const token = authHeader.replace(/^(Bearer )/i, '');
+        if (!token) {
+            return res.status(401).json({ success: false, message: 'Token tidak ditemukan.' });
+        }
+
+        const decoded = jwt.verify(token, SECRET_KEY);
+        const userId = decoded && decoded.id;
+        if (!userId) return res.status(401).json({ success: false, message: 'User tidak terautentikasi.' });
+
+        const { currentPassword, newPassword, confirmPassword } = req.body || {};
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            return res.status(400).json({ success: false, message: 'Semua field wajib diisi.' });
+        }
+        if (newPassword !== confirmPassword) {
+            return res.status(400).json({ success: false, message: 'Konfirmasi kata sandi tidak cocok.' });
+        }
+        if (typeof newPassword !== 'string' || newPassword.length < 8) {
+            return res.status(400).json({ success: false, message: 'Kata sandi minimal 8 karakter.' });
+        }
+
+        // Get raw user row (includes password hash)
+        const userRaw = await UserModel.findRawById(userId);
+        if (!userRaw) return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
+
+        const isMatch = await bcrypt.compare(currentPassword, userRaw.password);
+        if (!isMatch) return res.status(401).json({ success: false, message: 'Kata sandi lama salah.' });
+
+        // Prevent setting same as old
+        const sameAsOld = await bcrypt.compare(newPassword, userRaw.password);
+        if (sameAsOld) return res.status(400).json({ success: false, message: 'Kata sandi baru tidak boleh sama dengan yang lama.' });
+
+        const salt = await bcrypt.genSalt(10);
+        const hashed = await bcrypt.hash(newPassword, salt);
+
+        await UserModel.updatePassword(userId, hashed);
+
+        return res.status(200).json({ success: true, message: 'Kata sandi berhasil diubah.' });
+    } catch (error) {
+        if (error && error.name === 'TokenExpiredError') {
+            return res.status(401).json({ success: false, message: 'Token kadaluarsa.' });
+        }
+        if (error && error.name === 'JsonWebTokenError') {
+            return res.status(401).json({ success: false, message: 'Token tidak valid.' });
+        }
+        console.error('changePassword error', error);
+        return res.status(500).json({ success: false, message: 'Gagal mengubah kata sandi.' });
+    }
+};
+
 module.exports = { 
     register, 
     login, 
     verify, 
     getProfile, 
     updateProfile, 
-    uploadAvatar 
+    uploadAvatar,
+    changePassword
 };

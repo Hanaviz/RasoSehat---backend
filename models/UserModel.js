@@ -67,6 +67,21 @@ const UserModel = {
         return data || null;
     },
 
+    // Find full user row by id (includes password hash) - internal use
+    findRawById: async (id) => {
+        if (!id) return null;
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .limit(1)
+            .single();
+        if (error && error.code !== 'PGRST116') {
+            console.error('Supabase findRawById error', error);
+        }
+        return data || null;
+    },
+
     // Update by id — returns number of updated rows (1 on success)
     updateById: async (id, fields) => {
         if (!id) return 0;
@@ -85,6 +100,19 @@ const UserModel = {
         const { data, error } = await supabase.from('users').update({ avatar: avatarUrl }).eq('id', id).select('id');
         if (error) {
             console.error('Supabase setAvatar error', error);
+            throw error;
+        }
+        return Array.isArray(data) ? data.length : (data ? 1 : 0);
+    }
+    ,
+
+    // Update password (hash already computed) and optionally set password_changed_at
+    updatePassword: async (id, password_hash) => {
+        if (!id) return 0;
+        const payload = { password: password_hash };
+        const { data, error } = await supabase.from('users').update(payload).eq('id', id).select('id');
+        if (error) {
+            console.error('Supabase updatePassword error', error);
             throw error;
         }
         return Array.isArray(data) ? data.length : (data ? 1 : 0);

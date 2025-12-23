@@ -20,6 +20,7 @@ router.post('/login', authController.login);   // Untuk frontend Signin.jsx
 router.get('/user', authController.verify);    // Verifikasi token dan ambil data user
 router.get('/profile', authController.getProfile);
 router.put('/profile', authController.updateProfile);
+router.patch('/change-password', authController.changePassword);
 router.post('/avatar', uploadAvatar.single('avatar'), authController.uploadAvatar);
 
 module.exports = router;
